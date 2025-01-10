@@ -22,7 +22,7 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('', include('zoomApp.urls')),
     # path('lms', include('lms.urls')),
-    path('auth/', include('firebaseAuth.urls')),
+    # path('auth/', include('firebaseAuth.urls')),
     path('students/', include('students.urls')),  # Students CRUD
     path('courses/', include('courses.urls')),  # Courses CRUD
 ]
