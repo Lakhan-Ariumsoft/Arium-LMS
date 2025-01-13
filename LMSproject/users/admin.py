@@ -26,10 +26,10 @@ class RolesPermissionAdmin(admin.ModelAdmin):
 
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
-from .models import User
+from .models import Profile
 
 class CustomUserAdmin(UserAdmin):
-    model = User
+    model = Profile
 
     # Define the fields to be displayed in the list view
     list_display = ('firstname', 'lastname', 'email', 'phone', 'dob', 'is_active', 'role', 'created_on')
@@ -60,7 +60,7 @@ class CustomUserAdmin(UserAdmin):
     list_filter = ('is_active', 'role')  # Use fields that actually exist in your model
 
 # Register the customized UserAdmin
-admin.site.register(User, CustomUserAdmin)
+admin.site.register(Profile, CustomUserAdmin)
 
 admin.site.register(Role)
 admin.site.register(Permission, RolesPermissionAdmin)

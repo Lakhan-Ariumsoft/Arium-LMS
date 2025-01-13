@@ -179,3 +179,80 @@ def delete_student(request, student_id):
             "status": "error",
             "message": "Student not found"
         }, status=status.HTTP_404_NOT_FOUND)
+
+from django.db.models import Q
+from rest_framework.decorators import api_view
+from rest_framework.response import Response
+from rest_framework import status
+from students.models import Student
+
+@api_view(['GET'])
+def search(request):
+    # Extract query parameters
+    name = request.query_params.get("name", None)
+    email = request.query_params.get("email", None)
+    phone = request.query_params.get("phone", None)
+    course_title = request.query_params.get("course", None)
+    enrollment_date = request.query_params.get("enrollment_date", None)  # Format: YYYY-MM-DD
+    status_param = request.query_params.get("status", None)
+
+    try:
+        # Build the query dynamically
+        query = Q()
+        if name:
+            query &= Q(firstname__icontains=name) | Q(lastname__icontains=name)
+        if email:
+            query &= Q(email__icontains=email)
+        if phone:
+            query &= Q(phone__icontains=phone)
+        if course_title:
+            query &= Q(courses__title__icontains=course_title)  # Assuming Many-to-Many relationship
+        if enrollment_date:
+            query &= Q(studentcourse__date_of_joining=enrollment_date)  # Adjust if field differs
+        if status_param:
+            query &= Q(is_active=(status_param.lower() == "active"))
+
+        # Fetch filtered students
+        students = Student.objects.filter(query).distinct()
+
+        # Build response data
+        student_data = []
+        for student in students:
+            courses = [
+                {
+                    "title": course.title,
+                    "description": course.description,
+                    "instructor_name": course.instructor_name,
+                    # "enrollment_date": course,enrollment_date,
+                    "phone": course.phone,
+                    "dob": course.dob,
+                }
+                for course in student.courses.all()  # Assuming Many-to-Many relationship
+            ]
+
+            student_data.append({
+                "firstname": student.firstname,
+                "lastname": student.lastname,
+                "email": student.email,
+                "phone": student.phone,
+                "DOB": student.dob,
+                "address": student.address,
+                "courses": courses,
+                "is_active": student.is_active,
+                "created_on": student.created_on,
+                "last_updated_on": student.last_updated_on,
+            })
+
+        # Return success response
+        return Response({
+            "status": "success",
+            "data": student_data
+        }, status=status.HTTP_200_OK)
+
+    except Exception as e:
+        # Return error response in case of failure
+        return Response({
+            "status": "error",
+            "message": "An error occurred while processing your request",
+            "details": str(e)
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

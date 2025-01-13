@@ -6,7 +6,7 @@ from django.contrib.auth.hashers import make_password
 class CustomUserManager(UserManager):
     def _create_user(self, email, password, **extra_fields):
         email = self.normalize_email(email)
-        user = User(email=email, **extra_fields)
+        user = Profile(email=email, **extra_fields)
         user.password = make_password(password)
         user.save(using=self._db)
         return user
@@ -32,7 +32,7 @@ class Role(models.Model):
 
     def __str__(self):
         return self.role_title
-
+ 
 # Custom Permission Model (Separate from Django's Permission system)
 class Permission(models.Model):
     role = models.ForeignKey(Role, on_delete=models.CASCADE)
@@ -47,7 +47,7 @@ class Permission(models.Model):
     users_full = models.BooleanField(default=False)
 
 # Custom User Model
-class User(AbstractUser):  # No use of Group or Django's Permission
+class Profile(AbstractUser):  # No use of Group or Django's Permission
     firstname = models.CharField(max_length=50)
     lastname = models.CharField(max_length=50)
     email = models.EmailField(unique=True)
