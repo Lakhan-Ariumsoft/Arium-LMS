@@ -25,4 +25,5 @@ urlpatterns = [
     path('auth/', include('firebaseAuth.urls')),
     path('students/', include('students.urls')),  # Students CRUD
     path('courses/', include('courses.urls')),  # Courses CRUD
+    path('users/', include('users.urls')),
 ]

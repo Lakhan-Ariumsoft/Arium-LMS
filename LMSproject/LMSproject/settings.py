@@ -25,7 +25,7 @@ SECRET_KEY = 'django-insecure--kab(pu%($(ha@#i2o%h+(1!v(6kk2ft-p7wwe#a@im4f1)w!q
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-# ALLOWED_HOSTS = ['127.0.0.1', 'localhost', '8c95-2401-4900-1f2e-5eff-c970-a901-fb16-26ed.ngrok-free.app']
+ALLOWED_HOSTS = ['*','127.0.0.1', 'localhost', 'f997-103-160-167-162.ngrok-free.app' , 'ariumzoomlms.el.r.appspot.com']
 
 ALLOWED_HOSTS = ['*']
 
@@ -43,10 +43,11 @@ INSTALLED_APPS = [
     'courses',
     'zoomApp',
     'rest_framework',
-    # 'users'
+    'users'
 ]
 
 MIDDLEWARE = [
+    # 'whitenoise.middleware.WhiteNoiseMiddleware'
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -54,7 +55,9 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'django.middleware.csrf.CsrfViewMiddleware', 
 ]
+
 
 ROOT_URLCONF = 'LMSproject.urls'
 
@@ -75,6 +78,10 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = 'LMSproject.wsgi.application'
+
+CSRF_TRUSTED_ORIGINS = [
+    'http://localhost:8000',  # Add this line for local testing
+]
 
 
 # Database
@@ -131,3 +138,5 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # AUTH_USER_MODEL = 'auth.User'py 
 
+# settings.py
+AUTH_USER_MODEL = 'users.CustomUser'

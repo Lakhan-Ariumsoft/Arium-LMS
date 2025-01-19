@@ -1,14 +1,14 @@
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
-from .models import Course
+from .models import Courses
 from rest_framework.exceptions import NotFound, ValidationError
 
 class CourseView(APIView):
     def get(self, request):
         try:
             # Get all courses
-            courses = Course.objects.all()
+            courses = Courses.objects.all()
             data = [{
                 "id": course.id,
                 "title": course.title,
@@ -35,7 +35,7 @@ class CourseView(APIView):
                     raise ValidationError(f"'{field}' is required")
 
             # Create a new course
-            course = Course.objects.create(
+            course = Courses.objects.create(
                 title=data['title'],
                 description=data['description'],
                 instructor_name=data['instructor_name'],
@@ -57,7 +57,7 @@ class CourseView(APIView):
         data = request.data
         try:
             # Get the course to update
-            course = Course.objects.get(id=pk)
+            course = Courses.objects.get(id=pk)
             # Update fields
             course.title = data.get('title', course.title)
             course.description = data.get('description', course.description)
@@ -68,7 +68,7 @@ class CourseView(APIView):
             course.end_date = data.get('end_date', course.end_date)
             course.save()
             return Response({"message": "Course updated successfully"}, status=status.HTTP_200_OK)
-        except Course.DoesNotExist:
+        except Courses.DoesNotExist:
             raise NotFound(detail="Course not found")
         except Exception as e:
             return Response({"error": "Error updating course", "details": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
@@ -76,10 +76,10 @@ class CourseView(APIView):
     def delete(self, request, pk):
         try:
             # Delete the course
-            course = Course.objects.get(id=pk)
+            course = Courses.objects.get(id=pk)
             course.delete()
             return Response({"message": "Course deleted successfully"}, status=status.HTTP_204_NO_CONTENT)
-        except Course.DoesNotExist:
+        except Courses.DoesNotExist:
             raise NotFound(detail="Course not found")
         except Exception as e:
             return Response({"error": "Error deleting course", "details": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

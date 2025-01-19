@@ -35,3 +35,6 @@ httplib2==0.22.0
 pyparsing==3.2.0
 uritemplate==4.1.1
 djangorestframework==3.15.2
+gunicorn==23.0.0 
+packaging==24.2
+whitenoise==6.8.2

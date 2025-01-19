@@ -239,10 +239,9 @@ def zoom_webhook(request):
 
     return JsonResponse({"error": "Invalid method"}, status=400)
 
-
-from google.cloud import storage
-from datetime import datetime
-import requests
+from zoomApp.models import ZoomMeeting  # Import the ZoomMeeting model
+from courses.models import Courses  # Import the Courses model
+from django.db import IntegrityError
 
 def helperFunction(meeting_id):
     """Process and upload recordings for a given meeting ID."""
@@ -260,6 +259,9 @@ def helperFunction(meeting_id):
         recordings = details.get("recording_files", [])
         meeting_topic = details.get("topic", "Unknown_Meeting").replace("/", "_").replace(":", "_")
         meeting_folder = f"{meeting_topic}_{meeting_id}"  # Folder name: Meeting title + Meeting ID
+
+        # Extract the course name from the meeting topic (assuming it's the first part before the first underscore)
+        course_name = meeting_topic.split("_")[0]
 
         # Initialize Google Cloud Storage client
         storage_client = storage.Client.from_service_account_json(GCP_CREDENTIALS)
@@ -309,12 +311,397 @@ def helperFunction(meeting_id):
                         # Update metadata to mark upload as complete
                         blob.metadata = {"status": "uploaded", "meeting_id": meeting_id}
                         blob.patch()
+
+                        # Save Zoom meeting details to the database
+                        try:
+                            # Find or create the course based on the course name extracted from the meeting topic
+                            course = Courses.objects.filter(title=course_name).first()
+                            ZoomMeeting.objects.create(
+                                course=course,
+                                title=meeting_topic,
+                                meeting_id=meeting_id,
+                                duration=recording.get("duration", 0),  # Assuming duration is available
+                                recording_url=file_url
+                            )
+                            print(f"Zoom meeting '{meeting_topic}' added to database.")
+                        except IntegrityError as e:
+                            print(f"Integrity error while saving Zoom meeting: {e}")
                     else:
                         raise Exception(f"Failed to download file from Zoom. Status Code: {response.status_code}")
                 except Exception as e:
                     print(f"Error uploading file '{file_name}': {e}")
     except Exception as e:
         print(f"Critical error in upload_recordings for meeting ID '{meeting_id}': {e}")
+
+
+
+
+
+from django.http import JsonResponse
+from django.views import View
+from django.shortcuts import get_object_or_404
+from django.utils.decorators import method_decorator
+from django.contrib.auth.decorators import login_required
+from django.core.exceptions import PermissionDenied
+from .models import ZoomMeeting
+from courses.models import Courses  # Ensure this is imported correctly
+from django.views.decorators.csrf import csrf_exempt
+import json
+
+from users.decorators import role_required 
+
+# # Decorator to check role
+# def role_required(roles):
+#     def decorator(view_func):
+#         def _wrapped_view(request, *args, **kwargs):
+#             if not request.user.is_authenticated:
+#                 return JsonResponse({'error': 'Authentication required'}, status=401)
+#             if request.user.role not in roles:
+#                 raise PermissionDenied("You do not have permission to perform this action.")
+#             return view_func(request, *args, **kwargs)
+#         return _wrapped_view
+#     return decorator
+
+
+@method_decorator([login_required, role_required(['moderator', 'instructor'])], name='dispatch')
+@method_decorator(csrf_exempt, name='dispatch')  # To allow POST, PUT, and DELETE without CSRF token
+class ZoomMeetingView(View):
+    def get(self, request, meeting_id=None):
+        """
+        Retrieve a specific Zoom meeting or list all meetings.
+        """
+        if request.user.role == 'student':
+            return JsonResponse({"detail": "Permission Denied"}, status=403)
+
+        if meeting_id:
+            meeting = get_object_or_404(ZoomMeeting, id=meeting_id)
+            data = {
+                "id": meeting.id,
+                "course": meeting.course.title if meeting.course else None,
+                "title": meeting.title,
+                "meeting_id": meeting.meeting_id,
+                "duration": meeting.duration,
+                "recording_url": meeting.recording_url,
+                "created_at": meeting.created_at,
+                "updated_at": meeting.updated_at,
+            }
+            return JsonResponse(data, status=200)
+        else:
+            meetings = ZoomMeeting.objects.all()
+            data = [
+                {
+                    "id": meeting.id,
+                    "course": meeting.course.title if meeting.course else None,
+                    "title": meeting.title,
+                    "meeting_id": meeting.meeting_id,
+                    "duration": meeting.duration,
+                    "recording_url": meeting.recording_url,
+                    "created_at": meeting.created_at,
+                    "updated_at": meeting.updated_at,
+                }
+                for meeting in meetings
+            ]
+            return JsonResponse(data, safe=False, status=200)
+
+    def post(self, request):
+        """
+        Create a new Zoom meeting.
+        """
+        try:
+            
+            if request.user.role == 'student':
+                return JsonResponse({"detail": "Permission Denied"}, status=403)
+        
+            data = json.loads(request.body)
+            course_id = data.get('course')
+            course = Courses.objects.get(id=course_id) if course_id else None
+
+            meeting = ZoomMeeting.objects.create(
+                course=course,
+                title=data['title'],
+                meeting_id=data['meeting_id'],
+                duration=data['duration'],
+                recording_url=data['recording_url'],
+            )
+            return JsonResponse({"message": "Zoom meeting created successfully", "id": meeting.id}, status=201)
+        except Courses.DoesNotExist:
+            return JsonResponse({"error": "Course not found"}, status=404)
+        except KeyError as e:
+            return JsonResponse({"error": f"Missing field: {e}"}, status=400)
+
+    def put(self, request, meeting_id):
+        """
+        Update an existing Zoom meeting.
+        """
+
+        if request.user.role == 'student':
+            return JsonResponse({"detail": "Permission Denied"}, status=403)
+        
+        meeting = get_object_or_404(ZoomMeeting, id=meeting_id)
+        try:
+            data = json.loads(request.body)
+            course_id = data.get('course')
+            course = Courses.objects.get(id=course_id) if course_id else None
+
+            meeting.course = course
+            meeting.title = data.get('title', meeting.title)
+            meeting.meeting_id = data.get('meeting_id', meeting.meeting_id)
+            meeting.duration = data.get('duration', meeting.duration)
+            meeting.recording_url = data.get('recording_url', meeting.recording_url)
+            meeting.save()
+
+            return JsonResponse({"message": "Zoom meeting updated successfully"}, status=200)
+        except Courses.DoesNotExist:
+            return JsonResponse({"error": "Course not found"}, status=404)
+        except KeyError as e:
+            return JsonResponse({"error": f"Missing field: {e}"}, status=400)
+
+    def delete(self, request, meeting_id):
+        """
+        Delete a Zoom meeting.
+        """
+
+        if request.user.role == 'student':
+            return JsonResponse({"detail": "Permission Denied"}, status=403)
+        
+        meeting = get_object_or_404(ZoomMeeting, id=meeting_id)
+        meeting.delete()
+        return JsonResponse({"message": "Zoom meeting deleted successfully"}, status=200)
+
+
+
+
+
+# from django.http import JsonResponse
+# from django.views import View
+# from django.views.decorators.csrf import csrf_exempt
+# from django.utils.decorators import method_decorator
+# from .models import ZoomMeeting
+# from courses.models import Courses
+# import json
+# from users.permissions import is_moderator_or_instructor
+
+# @method_decorator(csrf_exempt, name='dispatch')
+# class ZoomMeetingCRUD(View):
+#     """Handle all CRUD operations for ZoomMeeting model (Create, Retrieve, Update, Delete)."""
+    
+#     def dispatch(self, request, *args, **kwargs):
+#         if not is_moderator_or_instructor(request.user):
+#             return JsonResponse({'error': 'Access denied. Only moderators and instructors can perform this action.'}, status=403)
+#         return super().dispatch(request, *args, **kwargs)
+    
+#     def get(self, request, meeting_id=None):
+#         """Retrieve Zoom meeting details (single or all)."""
+#         if meeting_id:
+#             try:
+#                 meeting = ZoomMeeting.objects.get(id=meeting_id)
+#                 meeting_data = {
+#                     "id": meeting.id,
+#                     "title": meeting.title,
+#                     "course": meeting.course.name if meeting.course else None,
+#                     "meeting_id": meeting.meeting_id,
+#                     "duration": meeting.duration,
+#                     "recording_url": meeting.recording_url
+#                 }
+#                 return JsonResponse(meeting_data, status=200)
+#             except ZoomMeeting.DoesNotExist:
+#                 return JsonResponse({'error': 'Zoom meeting not found.'}, status=404)
+#         else:
+#             meetings = ZoomMeeting.objects.all()
+#             meetings_data = [{"id": meeting.id, "title": meeting.title, "course": meeting.course.name if meeting.course else None} for meeting in meetings]
+#             return JsonResponse(meetings_data, safe=False, status=200)
+    
+#     def post(self, request):
+#         """Create a new Zoom meeting."""
+#         try:
+#             data = json.loads(request.body)
+#             course_name = data.get('course_name')
+#             course = Courses.objects.filter(name=course_name).first()
+
+#             meeting = ZoomMeeting.objects.create(
+#                 course=course,
+#                 title=data.get('title'),
+#                 meeting_id=data.get('meeting_id'),
+#                 duration=data.get('duration', 0),
+#                 recording_url=data.get('recording_url')
+#             )
+#             return JsonResponse({'message': 'Zoom meeting created', 'meeting_id': meeting.id}, status=201)
+#         except Exception as e:
+#             return JsonResponse({'error': str(e)}, status=400)
+
+#     def put(self, request, meeting_id):
+#         """Update an existing Zoom meeting."""
+#         try:
+#             meeting = ZoomMeeting.objects.get(id=meeting_id)
+#             data = json.loads(request.body)
+
+#             # Update the fields
+#             meeting.title = data.get('title', meeting.title)
+#             meeting.duration = data.get('duration', meeting.duration)
+#             meeting.recording_url = data.get('recording_url', meeting.recording_url)
+
+#             # If course is provided, update course association
+#             course_name = data.get('course_name')
+#             if course_name:
+#                 course = Courses.objects.filter(name=course_name).first()
+#                 meeting.course = course
+
+#             meeting.save()
+#             return JsonResponse({'message': 'Zoom meeting updated', 'meeting_id': meeting.id}, status=200)
+
+#         except ZoomMeeting.DoesNotExist:
+#             return JsonResponse({'error': 'Zoom meeting not found.'}, status=404)
+#         except Exception as e:
+#             return JsonResponse({'error': str(e)}, status=400)
+
+#     def delete(self, request, meeting_id):
+#         """Delete a Zoom meeting."""
+#         try:
+#             meeting = ZoomMeeting.objects.get(id=meeting_id)
+#             meeting.delete()
+#             return JsonResponse({'message': 'Zoom meeting deleted successfully'}, status=200)
+#         except ZoomMeeting.DoesNotExist:
+#             return JsonResponse({'error': 'Zoom meeting not found.'}, status=404)
+#         except Exception as e:
+#             return JsonResponse({'error': str(e)}, status=400)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# from google.cloud import storage
+# from datetime import datetime
+# import requests
+
+# def helperFunction(meeting_id):
+#     """Process and upload recordings for a given meeting ID."""
+#     try:
+#         # Get Zoom access token
+#         access_token = get_access_token(ZOOM_CLIENT_ID, ZOOM_CLIENT_SECRET, ZOOM_ACCOUNT_ID)
+#         if not access_token:
+#             raise Exception("Failed to retrieve access token from Zoom")
+
+#         # Get meeting recording details
+#         details = get_recording_details(access_token, meeting_id)
+#         if not details:
+#             raise Exception(f"Failed to retrieve recording details for meeting {meeting_id}")
+
+#         recordings = details.get("recording_files", [])
+#         meeting_topic = details.get("topic", "Unknown_Meeting").replace("/", "_").replace(":", "_")
+#         meeting_folder = f"{meeting_topic}_{meeting_id}"  # Folder name: Meeting title + Meeting ID
+
+#         # Initialize Google Cloud Storage client
+#         storage_client = storage.Client.from_service_account_json(GCP_CREDENTIALS)
+#         bucket = storage_client.bucket(GCP_BUCKET_NAME)
+
+#         # Check if the folder exists
+#         folder_blob = bucket.blob(f"{meeting_folder}/")
+#         folder_exists = folder_blob.exists()
+
+#         if not folder_exists:
+#             # Create the folder if it doesn't exist
+#             folder_blob.upload_from_string("", content_type="application/x-www-form-urlencoded")
+#             print(f"Folder '{meeting_folder}' created in bucket '{GCP_BUCKET_NAME}'.")
+
+#         # Process each recording
+#         for recording in recordings:
+#             if recording.get("file_type") == "MP4":
+#                 file_url = recording["download_url"]
+#                 recording_id = recording["id"]
+#                 start_time = recording.get("recording_start", "unknown_start").replace(":", "_").replace("T", "_")
+#                 file_name = f"{meeting_topic}_{recording_id}_{start_time}.mp4"
+#                 file_path = f"{meeting_folder}/{file_name}"  # Path in the bucket
+
+#                 # Check if the file already exists and is uploaded
+#                 blob = bucket.blob(file_path)
+#                 if blob.exists() and blob.metadata and blob.metadata.get("status") == "uploaded":
+#                     print(f"File '{file_name}' already uploaded successfully. Skipping upload.")
+#                     continue
+
+#                 try:
+#                     # Download the recording file
+#                     headers = {"Authorization": f"Bearer {access_token}"}
+#                     response = requests.get(file_url, headers=headers, stream=True, timeout=60)
+
+#                     if response.status_code == 200:
+#                         print(f"Uploading '{file_name}' to GCP...")
+
+#                         # Upload to GCP
+#                         blob.metadata = {"status": "uploading", "meeting_id": meeting_id}
+#                         blob.chunk_size = 26214400  # 25MB chunk size
+#                         blob.upload_from_file(
+#                             response.raw,
+#                             content_type="video/mp4"
+#                         )
+#                         print(f"Recording '{file_name}' uploaded successfully to GCP.")
+
+#                         # Update metadata to mark upload as complete
+#                         blob.metadata = {"status": "uploaded", "meeting_id": meeting_id}
+#                         blob.patch()
+#                     else:
+#                         raise Exception(f"Failed to download file from Zoom. Status Code: {response.status_code}")
+#                 except Exception as e:
+#                     print(f"Error uploading file '{file_name}': {e}")
+#     except Exception as e:
+#         print(f"Critical error in upload_recordings for meeting ID '{meeting_id}': {e}")
 
 
 # import time
