@@ -1,95 +1,82 @@
-
-from django.contrib.auth import authenticate, login
+from django.contrib.auth import login
+from .models import CustomUser
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
-from .models import CustomUser
-from django.contrib.auth import logout
-from django.views.decorators.csrf import csrf_exempt
-from django.middleware.csrf import CsrfViewMiddleware
-
-
-
-class CSRFView(APIView):
-
-    def get(self, request):
-        # Get CSRF token from cookies
-        csrf_token = request.COOKIES.get('csrftoken')
-        
-        if csrf_token:
-            return Response({"csrf_token": csrf_token})
-        else:
-            return Response({"detail": "CSRF token not found in cookies."}, status=400)
+from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import AllowAny
 
 class LoginAPIView(APIView):
     """
-    API View to handle user login based on phone number and password, with role check.
+    API View for user login using phone and password.
     """
-    
+    permission_classes = [AllowAny]
 
-    @csrf_exempt
-    def post(self, request, *args, **kwargs):
-        phone_number = request.data.get('phone_number')
-        password = request.data.get('password')
-
-        if not phone_number or not password:
-            return Response({"detail": "Phone number and password are required."}, status=status.HTTP_400_BAD_REQUEST)
-
-        # Check if phone_number exists
-        try:
-            user = CustomUser.objects.get(phone=phone_number)
-        except CustomUser.DoesNotExist:
-            return Response({"detail": "Invalid phone number."}, status=status.HTTP_401_UNAUTHORIZED)
-
-        # Authenticate the user using the phone number and password
-        if user.check_password(password):
-            # Check the role of the user
-            role = user.role  # Assuming you have 'role' field in your model
-
-            # Validate user role
-            if role not in ['moderator', 'instructor', 'student']:
-                return Response({"detail": "Unauthorized role."}, status=status.HTTP_403_FORBIDDEN)
-
-            # Log the user in
-            login(request, user)
-
-            # Manually ensure the session is saved and session ID is added to the `django_session` table
-            request.session.save()
-
-            # Create the response data
-            response_data = {
-                'email': user.email,
-                'role': role,
-                'name': user.get_full_name(),  # Using `get_full_name()` method of AbstractUser
-                'session_id': request.session.session_key  # Include the session ID
-            }
-
-            return Response({
-                "message": "User logged in successfully.",
-                "user": response_data,
-            }, status=status.HTTP_200_OK)
-        else:
-            return Response({"detail": "Invalid credentials."}, status=status.HTTP_401_UNAUTHORIZED)
-
-
-class LogoutView(APIView):
-    @csrf_exempt
     def post(self, request):
-        # Retrieve CSRF token from the request headers
-        csrf_token = request.headers.get('X-CSRFToken')
+        phone = request.data.get("phone")
+        password = request.data.get("password")
 
-        if not csrf_token:
-            return Response({"detail": "CSRF token is missing."}, status=400)
+        if not phone or not password:
+            return Response({"detail": "Phone and password are required."}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Validate CSRF token
-        csrf_check = CsrfViewMiddleware().process_request(request)
-        if csrf_check:
-            return Response({"detail": "CSRF token validation failed."}, status=403)
+        try:
+            # Get user by phone
+            user = CustomUser.objects.get(phone=phone)
 
-        # Logout the user
-        logout(request)
-        
-        return Response({"message": "User logged out successfully."}, status=200)
+            # Check password
+            if user.check_password(password):
+                # Log the user in (optional)
+                login(request, user)
+
+                # Generate JWT tokens
+                refresh = RefreshToken.for_user(user)
+                access_token = str(refresh.access_token)
+                refresh_token = str(refresh)
+
+                return Response({
+                    "message": "Login successful.",
+                    "access_token": access_token,
+                    "refresh_token": refresh_token,
+                    "user": {
+                        "id": user.id,
+                        "email": user.email,
+                        "phone": user.phone,
+                        "role": user.role,
+                        "name": user.get_full_name()
+                    }
+                }, status=status.HTTP_200_OK)
+            else:
+                return Response({"detail": "Invalid credentials."}, status=status.HTTP_401_UNAUTHORIZED)
+
+        except CustomUser.DoesNotExist:
+            return Response({"detail": "User with this phone does not exist."}, status=status.HTTP_404_NOT_FOUND)
+
+
+
+
+class LogoutAPIView(APIView):
+    """
+    API View for user logout.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        refresh_token = request.data.get("refresh_token")
+        if not refresh_token:
+            return Response({"detail": "Refresh token is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            # Blacklist the refresh token
+            token = RefreshToken(refresh_token)
+            token.blacklist()
+
+            return Response({"message": "Logout successful."}, status=status.HTTP_200_OK)
+        except Exception as e:
+            return Response({"detail": "Invalid or expired refresh token."}, status=status.HTTP_400_BAD_REQUEST)
+
+
+
 
 
 # from django.http import JsonResponse

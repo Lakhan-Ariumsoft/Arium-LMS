@@ -1,12 +1,13 @@
 from django.urls import path
-from .views import LoginAPIView , LogoutView ,CSRFView # Import the LoginAPIView from your views.py
+from .views import LoginAPIView , LogoutAPIView  # Import the LoginAPIView from your views.py
+from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
 urlpatterns = [
     path('login/', LoginAPIView.as_view(), name='login'),  # Add the URL pattern for login
-    path('logout/', LogoutView.as_view(), name='logout'),
-    path('csrf/', CSRFView.as_view(), name='csrf'),
-
-
+    path('logout/', LogoutAPIView.as_view(), name='logout'),
+    # path('csrf/', CSRFView.as_view(), name='csrf'),
+    path('token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
+    path('refresh/', TokenRefreshView.as_view(), name='token_refresh'),
 
 
 ]
