@@ -5,8 +5,8 @@ class ZoomMeeting(models.Model):
     course = models.ForeignKey(Courses, null=True, blank=True, on_delete=models.SET_NULL)  # Allows blank course
     title = models.CharField(max_length=200)
     meeting_id = models.CharField(max_length=50)  # Meeting ID should be unique
-    duration = models.IntegerField()  # Duration is fine, but you might want to specify time units (seconds)
-    recording_url = models.URLField()  # URL for the recording
+    duration = models.IntegerField(blank=True)  # Duration is fine, but you might want to specify time units (seconds)
+    recording_url = models.URLField(blank=True)  # URL for the recording
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

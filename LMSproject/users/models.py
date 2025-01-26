@@ -1,20 +1,43 @@
 from django.contrib.auth.models import AbstractUser
 from django.db import models
 
-class CustomUser(AbstractUser):
-    ROLE_CHOICES = [
-        ('moderator', 'Moderator'),
-        ('instructor', 'Instructor'),
-        ('student', 'Student'),
-    ]
 
-    phone = models.CharField(max_length=15, unique=True, blank=True, null=True)
-    role = models.CharField(max_length=10, choices=ROLE_CHOICES, default='student')
+class Permission(models.Model):
+    name = models.CharField(max_length=100, unique=True)
+    can_read_users = models.BooleanField(default=False)
+    can_write_users = models.BooleanField(default=False)
+    can_read_courses = models.BooleanField(default=False)
+    can_write_courses = models.BooleanField(default=False)
+    can_read_meetings = models.BooleanField(default=False)
+    can_write_meetings = models.BooleanField(default=False)
 
     def __str__(self):
-        return self.username
+        return self.name
+
+class Role(models.Model):
+    name = models.CharField(max_length=50, unique=True)
+    permissions = models.ForeignKey(Permission, on_delete=models.CASCADE)
+
+    def __str__(self):
+        return self.name
+
+class User(AbstractUser):
+    email = models.EmailField(unique=True)
+    firstname = models.CharField(max_length=50)
+    lastname = models.CharField(max_length=50)
+    countryCode = models.CharField(max_length=10, blank=True, null=True)
+    phone = models.CharField(max_length=15, blank=True, null=True , unique=True)
+    dob = models.DateField(verbose_name="Date of Birth", null=True, blank=True)
+    address = models.TextField(null=True, blank=True)
+    created_on = models.DateTimeField(auto_now_add=True ,blank=True)
+    last_updated_on = models.DateTimeField(auto_now=True ,blank=True)
+    is_active = models.BooleanField(default=True)
+    is_admin = models.BooleanField(default=False)
+    role = models.ForeignKey(Role, on_delete=models.SET_NULL, null=True, blank=True)
 
 
+    def __str__(self):
+        return f"{self.username})"
 
 
 
@@ -28,7 +51,7 @@ class CustomUser(AbstractUser):
 # from django.contrib.auth.hashers import make_password
 
 
-# class CustomUserManager(UserManager):
+# class UserManager(UserManager):
 #     def _create_user(self, email, password, **extra_fields):
 #         email = self.normalize_email(email)
 #         user = Profile(email=email, **extra_fields)
@@ -85,7 +108,7 @@ class CustomUser(AbstractUser):
 #     role = models.ForeignKey(Permission, on_delete=models.CASCADE,null=True, blank=True)
 #     USERNAME_FIELD = "email"
 #     REQUIRED_FIELDS = []
-#     objects = CustomUserManager()
+#     objects = UserManager()
 
 #     def __str__(self):
 #         return f"{self.firstname} {self.lastname}"
@@ -119,8 +142,8 @@ class CustomUser(AbstractUser):
 # class Enrollment(models.Model):
 #     student = models.ForeignKey(Profile, on_delete=models.CASCADE)
 #     course = models.ForeignKey(Course, on_delete=models.CASCADE)
-#     date_of_joining = models.DateField()
-#     expiry_date = models.DateField()
+#     enrollmentDate = models.DateField()
+#     expiryDate = models.DateField()
 #     courses = models.ManyToManyField(Course, through='Enrollment', related_name='students')
 
 

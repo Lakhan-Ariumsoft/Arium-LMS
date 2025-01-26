@@ -1,481 +1,362 @@
-from django.db import IntegrityError, transaction
+from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
 from django.shortcuts import get_object_or_404
-from django.http import JsonResponse
-from users.decorators import role_required
-from .models import Students, Enrollment, Courses
-from users.models import CustomUser
-from rest_framework.decorators import api_view
-from django.views.decorators.csrf import csrf_exempt
+from rest_framework.response import Response
+from rest_framework import status
+from rest_framework.views import APIView
+from django.db.models import Q
+from django.db import transaction
+from courses.models import Courses
+from .models import Students, Enrollment
+from .serializers import StudentsSerializer, EnrollmentSerializer 
+from users.serializers import UserSerializer
+from django.contrib.auth import get_user_model
 
-@csrf_exempt
-@role_required(roles=['moderator'])
-@api_view(['POST'])
-def create_student(request):
+from rest_framework.response import Response
+from rest_framework import status
+from django.db.models import Q
+from django.core.paginator import Paginator, PageNotAnInteger, EmptyPage
+
+def get_paginated_students(request, students_queryset):
+    """
+    Handles pagination for the students data and returns the paginated response.
+    """
     try:
-        # Start the transaction block
-        with transaction.atomic():
-            user_data = request.data.get('user')
-            dob = request.data.get('dob')
-            address = request.data.get('address')
-            batch = request.data.get('batch')
-            course_ids = request.data.get('courses')  # List of course IDs
+        # Default limit and page if not provided in the query params
+        limit = int(request.query_params.get('limit', 10))
+        page = request.query_params.get('page', 1)
 
-            if not user_data:
-                return JsonResponse({'error': 'User data is required'}, status=400)
+        paginator = Paginator(students_queryset, limit)
 
-            # Check if the user already exists by username or phone
-            if CustomUser.objects.filter(username=user_data['username']).exists():
-                return JsonResponse({'error': 'Username already exists'}, status=400)
-            if CustomUser.objects.filter(phone=user_data['phone']).exists():
-                return JsonResponse({'error': 'Phone number already exists'}, status=400)
+        try:
+            # Get the requested page
+            paginated_students = paginator.get_page(page)
+        except PageNotAnInteger:
+            # If the page is not an integer, return the first page
+            paginated_students = paginator.page(1)
+        except EmptyPage:
+            # If the page is out of range, return an empty result
+            paginated_students = []
 
-            # Create the CustomUser object
-            user = CustomUser.objects.create_user(
-                username=user_data['username'],
-                email=user_data['email'],
-                password=user_data['password'],
-                phone=user_data['phone'],
-                role='student'  # Role will be set as 'student'
-            )
+        # Prepare student data
+        student_data = []
+        for student in paginated_students:
+            enrollments = Enrollment.objects.filter(student=student)
+            student_serializer = StudentsSerializer(student)
 
-            # Create the Student profile
-            student = Students.objects.create(
-                user=user,
-                dob=dob,
-                address=address,
-                batch=batch
-            )
+            # Extract enrolled courses and their enrollment dates
+            enrolled_courses = []
+            enrolled_dates = []
 
-            # Ensure all courses exist before enrolling the student
-            for course_id in course_ids:
-                try:
-                    course = get_object_or_404(Courses, id=course_id)
-                    Enrollment.objects.create(student=student, course=course, date_of_joining=request.data.get('date_of_joining'), expiry_date=request.data.get('expiry_date'))
-                except Exception as e:
-                    # Rollback the transaction if any course is not found or another error occurs
-                    raise IntegrityError(f"Course with ID {course_id} not found or error occurred: {str(e)}")
+            for enrollment in enrollments:
+                enrolled_courses.append(enrollment.courses.courseName)
+                enrolled_dates.append(( 
+                    enrollment.enrollmentDate.isoformat() if enrollment.enrollmentDate else "",
+                    enrollment.expiryDate.isoformat() if enrollment.expiryDate else ""
+                ))
 
-            # If everything is fine, commit the transaction
-            return JsonResponse({'message': 'Student created successfully', 'student_id': student.id}, status=201)
+            student_data.append({
+                "_id": student.id,
+                "name": f"{student.firstname} {student.lastname}",
+                "countryCode": student.countryCode,
+                "phone": student.phone,
+                "email": student.email,
+                "status": student.status,
+                "enrolled_courses": enrolled_courses,
+                "enrolled_dates": enrolled_dates,
+            })
 
-    except IntegrityError as e:
-        # Rollback any changes if an error occurred
-        return JsonResponse({'error': f'Error during student creation: {str(e)}'}, status=400)
-    except Exception as e:
-        # Catch other exceptions and rollback
-        return JsonResponse({'error': f'An error occurred: {str(e)}'}, status=500)
-
-
-@csrf_exempt
-@role_required(roles=['moderator'])
-@api_view(['GET'])
-def get_student(request, student_id):
-    try:
-        student = get_object_or_404(Students, id=student_id)
-        student_data = {
-            'user': student.user.username,
-            'dob': student.dob,
-            'address': student.address,
-            'batch': student.batch,
-            'courses': [course.title for course in student.courses.all()],
-            'status': student.status,
+        # Return paginated response
+        response = {
+            "status": True,
+            "message": "Fetched successfully.",
+            "data": student_data,
+            "total": paginator.count,
+            "limit": limit,
+            "page": int(paginated_students.number) if paginated_students else int(page),
+            "pages": paginator.num_pages,
         }
-        return JsonResponse(student_data, status=200)
-    except Exception as e:
-        return JsonResponse({'error': str(e)}, status=500)
 
-
-@csrf_exempt
-@role_required(roles=['moderator'])
-@api_view(['PUT'])
-def update_student(request, student_id):
-    try:
-        student = get_object_or_404(Students, id=student_id)
-
-        # Update student profile
-        student.dob = request.data.get('dob', student.dob)
-        student.address = request.data.get('address', student.address)
-        student.batch = request.data.get('batch', student.batch)
-        student.status = request.data.get('status', student.status)
-        student.save()
-
-        # Update courses (we will just remove old courses and add new ones)
-        course_ids = request.data.get('courses', [])
-        student.courses.clear()  # Remove all previous courses
-        for course_id in course_ids:
-            course = get_object_or_404(Courses, id=course_id)
-            Enrollment.objects.create(student=student, course=course, date_of_joining=request.data.get('date_of_joining'), expiry_date=request.data.get('expiry_date'))
-
-        return JsonResponse({'message': 'Student updated successfully'}, status=200)
+        return Response(response, status=status.HTTP_200_OK)
 
     except Exception as e:
-        return JsonResponse({'error': str(e)}, status=500)
+        return Response(
+            {"status": False, "message": f"An unexpected error occurred: {str(e)}"},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
 
-@csrf_exempt
-@role_required(roles=['moderator'])
-@api_view(['DELETE'])
-def delete_student(request, student_id):
+def checkStudentsEnrollment(student):
+    """
+    Check if the student is enrolled in any course other than the ones being deleted.
+    """
     try:
-        student = get_object_or_404(Students, id=student_id)
+        return Enrollment.objects.filter(student=student).exists()
+    except Exception as e:
+        # Log the error (if logging is set up) and return a structured error message
+        print(f"Error checking enrollment for student {student.id}: {str(e)}")
+        return {
+            "error": True,
+            "message": f"An unexpected error occurred while checking enrollments: {str(e)}"
+        }
+
+class StudentsListCreateAPIView(APIView):
+    """
+    View to handle fetching all students, creating a student, and search/filter students with proper exception handling.
+    """
+
+    def get(self, request):
+        try:
+            # Get query parameters for filtering
+            search_text = request.query_params.get('searchText', None)
+            search_course = request.query_params.get('searchCourse', None)
+            search_status = request.query_params.get('searchStatus', None)
+
+            # Build the Q object to filter the queryset
+            query = Q()
+
+            if search_text:
+                query |= Q(firstname__icontains=search_text) | Q(lastname__icontains=search_text)
+                query |= Q(email__icontains=search_text) | Q(phone__icontains=search_text)
+                query |= Q(status__icontains=search_text)
+
+            if search_course:
+                # Correct the lookup for Many-to-One relationship
+                query &= Q(enrollment__courses__courseName__icontains=search_course)
+
+            if search_status:
+                query &= Q(status__icontains=search_status)
+
+            # Filter students based on the query and order by 'id' (or any other field)
+            students_queryset = Students.objects.filter(query).distinct().order_by('id')
+
+            return get_paginated_students(request, students_queryset)
+        except Students.DoesNotExist:
+            return Response({"message": "No students found matching the criteria."}, status=status.HTTP_404_NOT_FOUND)
+
+        except Exception as e:
+            # Log the error if needed
+            print(f"Error occurred while fetching students: {str(e)}")
+            return Response(
+                {"message": f"An unexpected error occurred: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+
+    def post(self, request):
+        """
+        Create a new student and enroll them in selected courses.
+        """
+        try:
+            # Wrap the entire operation in an atomic transaction
+            with transaction.atomic():
+                student_data = request.data.get("student")
+                enrollment_data = request.data.get("enrollment")
+
+                # Validate enrollment data
+                if not enrollment_data or not isinstance(enrollment_data, list):
+                    return Response(
+                        {"status": "error", "message": "Enrollment data must be a non-empty list."},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+
+                # Ensure each enrollment contains a valid course ID
+                for enrollment in enrollment_data:
+                    if not enrollment.get("course"):
+                        return Response(
+                            {"status": "error", "message": "Each enrollment must include a valid course ID."},
+                            status=status.HTTP_400_BAD_REQUEST,
+                        )
+
+                # Create the student
+                student_serializer = StudentsSerializer(data=student_data)
+                if student_serializer.is_valid():
+                    student = student_serializer.save()
+
+                    # Enroll the student in selected courses
+                    for enrollment in enrollment_data:
+                        course_id = enrollment.get("course")
+                        try:
+                            # Ensure the course exists
+                            course = get_object_or_404(Courses, id=course_id)
+
+                            # Check if the student is already enrolled in the course
+                            if Enrollment.objects.filter(student=student, courses=course).exists():
+                                raise ValueError(f"Student is already enrolled in the course: {course.courseName}")
+
+                            # Create enrollment
+                            Enrollment.objects.create(
+                                student=student,
+                                courses=course,
+                                enrollmentDate=enrollment.get("enrollmentDate"),
+                                expiryDate=enrollment.get("expiryDate"),
+                            )
+
+                            # Update the course's student count
+                            course.studentsCount += 1
+                            course.save(update_fields=["studentsCount"])
+
+                        except Courses.DoesNotExist:
+                            raise ValueError(f"Course with ID {course_id} does not exist.")
+                        except Exception as e:
+                            raise ValueError(f"An error occurred while enrolling in course ID {course_id}: {str(e)}")
+
+                    return Response(
+                        {"status": "success", "data": student_serializer.data},
+                        status=status.HTTP_201_CREATED,
+                    )
+
+                return Response(
+                    {"status": "error", "message": student_serializer.errors},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+        except ValueError as e:
+            # Handle specific validation or business logic errors
+            return Response(
+                {"status": "error", "message": str(e)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        except Exception as e:
+            # Handle unexpected exceptions
+            return Response(
+                {"status": "error", "message": f"An unexpected error occurred: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+
+class StudentsDetailAPIView(APIView):
+    """
+    View to handle fetching, updating, and deleting a specific student.
+    """
+
+    def get(self, request, pk=None):
+        try:
+            student = get_object_or_404(Students, pk=pk)
+            enrollments = Enrollment.objects.filter(student=student)
+            student_data = StudentsSerializer(student).data
+            enrollment_data = EnrollmentSerializer(enrollments, many=True).data
+            return Response({"student": student_data, "enrollments": enrollment_data}, status=status.HTTP_200_OK)
+        except Students.DoesNotExist:
+            return Response({"error": "Student not found."}, status=status.HTTP_404_NOT_FOUND)
+
+
+    def put(self, request, pk=None):
+        try:
+            # Fetch the student object
+            student = get_object_or_404(Students, pk=pk)
+
+            # Update the student fields in the Students model using the StudentSerializer
+            student_serializer = StudentsSerializer(student, data=request.data, partial=True)
+            if student_serializer.is_valid():
+                updated_student = student_serializer.save()  # Save the updated student
+
+                # Check if the student has an associated user, then update the User model
+                if hasattr(updated_student, 'user'):
+                    user = updated_student.user
+                    user_serializer = UserSerializer(user, data=request.data, partial=True)
+                    if user_serializer.is_valid():
+                        user_serializer.save()  # Save the updated user
+                        # Return success message indicating user was updated
+                        return Response({
+                            "message": "Student and associated User successfully updated.",
+                            "data": student_serializer.data
+                        }, status=status.HTTP_200_OK)
+                    else:
+                        return Response({
+                            "error": "User update failed.",
+                            "details": user_serializer.errors
+                        }, status=status.HTTP_400_BAD_REQUEST)
+                
+                # Handle enrollment updates if any
+                if 'enrollments' in request.data:
+                    for enrollment_data in request.data['enrollments']:
+                        enrollment = Enrollment.objects.filter(student=updated_student, id=enrollment_data.get('id')).first()
+                        if enrollment:
+                            # If enrollment exists, update it using the EnrollmentSerializer
+                            enrollment_serializer = EnrollmentSerializer(enrollment, data=enrollment_data, partial=True)
+                            if enrollment_serializer.is_valid():
+                                enrollment_serializer.save()
+                            else:
+                                return Response({
+                                    "error": "Enrollment update failed.",
+                                    "details": enrollment_serializer.errors
+                                }, status=status.HTTP_400_BAD_REQUEST)
+                        else:
+                            # If no existing enrollment, create a new one
+                            enrollment_data['student'] = updated_student.id
+                            new_enrollment_serializer = EnrollmentSerializer(data=enrollment_data)
+                            if new_enrollment_serializer.is_valid():
+                                new_enrollment_serializer.save()
+                            else:
+                                return Response({
+                                    "error": "Enrollment creation failed.",
+                                    "details": new_enrollment_serializer.errors
+                                }, status=status.HTTP_400_BAD_REQUEST)
+
+                # Return success message indicating student data is updated
+                return Response({
+                    "message": "Student successfully updated.",
+                    "data": student_serializer.data
+                }, status=status.HTTP_200_OK)
+            else:
+                return Response({
+                    "error": "Student update failed.",
+                    "details": student_serializer.errors
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+        except Students.DoesNotExist:
+            return Response({"error": "Student not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        except Exception as e:
+            return Response({"error": f"An unexpected error occurred: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
         
-        # Delete related enrollments
-        Enrollment.objects.filter(student=student).delete()
+        
+    def delete(self, request, pk=None):
+        try:
+            with transaction.atomic():
+                # Fetch the student instance
+                student = get_object_or_404(Students, pk=pk)
 
-        # Delete the student profile
-        student.user.delete()  # Deletes both the Student and associated CustomUser
-        student.delete()
+                # Check enrollments for the student
+                enrollments = Enrollment.objects.filter(student=student)
 
-        return JsonResponse({'message': 'Student deleted successfully'}, status=200)
+                if not enrollments.exists():
+                    return Response(
+                        {"message": "No enrollments found for the student."},
+                        status=status.HTTP_404_NOT_FOUND,
+                    )
 
-    except Exception as e:
-        return JsonResponse({'error': str(e)}, status=500)
+                # Iterate through enrollments and update course student count
+                for enrollment in enrollments:
+                    course = enrollment.courses
+                    course.studentsCount -= 1
+                    course.save(update_fields=["studentsCount"])
 
-@csrf_exempt
-@role_required(roles=['moderator'])
-@api_view(['GET'])
-def list_students(request):
-    try:
-        students = Students.objects.all()
-        students_data = [
-            {
-                'user': student.user.username,
-                'dob': student.dob,
-                'address': student.address,
-                'batch': student.batch,
-                'status': student.status,
-            }
-            for student in students
-        ]
-        return JsonResponse({'students': students_data}, status=200)
+                # Delete enrollments for this student
+                enrollments.delete()
 
-    except Exception as e:
-        return JsonResponse({'error': str(e)}, status=500)
+                # Check if the student is enrolled in any other course
+                if not checkStudentsEnrollment(student):
+                    # Mark the corresponding user as inactive
+                    user = student.user
+                    user.is_active = False
+                    user.save(update_fields=["is_active"])
 
+                    # Delete the student record
+                    student.delete()
 
-# from rest_framework.decorators import api_view
-# from rest_framework.response import Response
-# from rest_framework import status
-# from django.core.exceptions import ObjectDoesNotExist
-# from .models import Students , Enrollment
-# from courses.models import Courses
-# from datetime import datetime
-
-# # Create Student
-# @api_view(['POST'])
-# def create_student(request):
-#     # Extracting data from the request body
-#     firstname = request.data.get('firstname')
-#     lastname = request.data.get('lastname')
-#     email = request.data.get('email')
-#     phone = request.data.get('phone')
-#     dob = request.data.get('dob')
-#     address = request.data.get('address')
-#     course_ids = request.data.get('course_ids')  # course_ids is expected to be a list
-#     date_of_joining = request.data.get('date_of_joining')
-
-#     # Check if the required fields are present
-#     if not all([firstname, lastname, email, phone, dob, address, course_ids, date_of_joining]):
-#         return Response({"error": "All fields are required."}, status=status.HTTP_400_BAD_REQUEST)
-
-#     # Try to fetch courses based on the provided course_ids
-#     try:
-#         courses = Courses.objects.filter(id__in=course_ids)
-#         if not courses:
-#             return Response({"error": "No courses found with the given IDs."}, status=status.HTTP_400_BAD_REQUEST)
-#     except Courses.DoesNotExist:
-#         return Response({"error": "Invalid course IDs."}, status=status.HTTP_400_BAD_REQUEST)
-
-#     # Create the Student instance
-#     student = Students.objects.create(
-#         firstname=firstname,
-#         lastname=lastname,
-#         email=email,
-#         phone=phone,
-#         dob=dob,
-#         address=address,
-#     )
-
-#     # Assign courses and create enrollment records
-#     for course in courses:
-#         Enrollment.objects.create(
-#             student=student,
-#             course=course,
-#             date_of_joining=datetime.strptime(date_of_joining, '%Y-%m-%d'),
-#             expiry_date=datetime.strptime(request.data.get('expiry_date'), '%Y-%m-%d')
-#         )
-
-#     # Return the created student data along with status and message
-#     student_data = {
-#         "id": student.id,
-#         "firstname": student.firstname,
-#         "lastname": student.lastname,
-#         "email": student.email,
-#         "phone": student.phone,
-#         "dob": student.dob,
-#         "address": student.address,
-#         "courses": [course.title for course in courses],
-#     }
-
-#     return Response({
-#         "status": "success",
-#         "message": "Student created successfully",
-#         "data": student_data
-#     }, status=status.HTTP_201_CREATED)
-
-
-# # List Students
-# @api_view(['GET'])
-# def list_students(request):
-#     students = Students.objects.all()
-#     student_data = [
-#         {
-#             "id": student.id,
-#             "firstname": student.firstname,
-#             "lastname": student.lastname,
-#             "email": student.email,
-#             "phone": student.phone,
-#             "dob": student.dob,
-#             "address": student.address,
-#             "courses": [enrollment.course.title for enrollment in student.enrollment_set.all()],
-#         }
-#         for student in students
-#     ]
-#     return Response({
-#         "status": "success",
-#         "message": "Students fetched successfully",
-#         "data": student_data
-#     }, status=status.HTTP_200_OK)
-
-
-# # Get a Single Student
-# # @api_view(['GET'])
-# # def get_student(request, student_id):
-# #     try:
-# #         student = Student.objects.get(id=student_id)
-# #         student_data = {
-# #             "id": student.id,
-# #             "firstname": student.firstname,
-# #             "lastname": student.lastname,
-# #             "email": student.email,
-# #             "phone": student.phone,
-# #             "dob": student.dob,
-# #             "address": student.address,
-# #             "courses": [enrollment.course.title for enrollment in student.enrollment_set.all()],
-# #         }
-# #         return Response({
-# #             "status": "success",
-# #             "message": "Student fetched successfully",
-# #             "data": student_data
-# #         }, status=status.HTTP_200_OK)
-# #     except Student.DoesNotExist:
-# #         return Response({
-# #             "status": "error",
-# #             "message": "Student not found"
-# #         }, status=status.HTTP_404_NOT_FOUND)
-
-# from rest_framework.decorators import api_view
-# from rest_framework.response import Response
-# from rest_framework import status
-# from django.db.models import Q
-# from .models import Students
-
-# @api_view(['GET'])
-# def get_or_search_students(request):
-#     student_id = request.query_params.get('student_id')
-#     if student_id:
-#         try:
-#             student = Students.objects.get(id=student_id)
-#             student_data = {
-#                 "id": student.id,
-#                 "firstname": student.firstname,
-#                 "lastname": student.lastname,
-#                 "email": student.email,
-#                 "phone": student.phone,
-#                 "dob": student.DOB,
-#                 "address": student.address,
-#                 "courses": [course.title for course in student.courses.all()],
-#                 "is_active": student.is_active,
-#             }
-#             return Response({
-#                 "status": "success",
-#                 "message": "Student fetched successfully",
-#                 "data": student_data
-#             }, status=status.HTTP_200_OK)
-#         except Students.DoesNotExist:
-#             return Response({
-#                 "status": "error",
-#                 "message": "Student not found"
-#             }, status=status.HTTP_404_NOT_FOUND)
-
-#     studentname = request.query_params.get('studentname')
-#     course_title = request.query_params.get('course')
-#     status_filter = request.query_params.get('status')
-
-#     filters = Q()
-#     if studentname:
-#         filters &= Q(firstname__icontains=studentname) | Q(lastname__icontains=studentname)
-#     if course_title:
-#         filters &= Q(courses__title__icontains=course_title)
-#     if status_filter:
-#         filters &= Q(is_active=(status_filter.lower() == 'active'))
-
-#     students = Students.objects.filter(filters).distinct()
-
-#     student_list = []
-#     for student in students:
-#         student_list.append({
-#             "id": student.id,
-#             "firstname": student.firstname,
-#             "lastname": student.lastname,
-#             "email": student.email,
-#             "phone": student.phone,
-#             "dob": student.DOB,
-#             "address": student.address,
-#             "courses": [course.title for course in student.courses.all()],
-#             "is_active": student.is_active,
-#         })
-
-#     return Response({
-#         "status": "success",
-#         "message": "Students fetched successfully",
-#         "data": student_list
-#     }, status=status.HTTP_200_OK)
-
-
-# # Update Student
-# @api_view(['PUT'])
-# def update_student(request, student_id):
-#     try:
-#         student = Students.objects.get(id=student_id)
-#     except Students.DoesNotExist:
-#         return Response({
-#             "status": "error",
-#             "message": "Student not found"
-#         }, status=status.HTTP_404_NOT_FOUND)
-
-#     # Update student fields
-#     student.firstname = request.data.get('firstname', student.firstname)
-#     student.lastname = request.data.get('lastname', student.lastname)
-#     student.email = request.data.get('email', student.email)
-#     student.phone = request.data.get('phone', student.phone)
-#     student.dob = request.data.get('dob', student.dob)
-#     student.address = request.data.get('address', student.address)
-    
-#     # Update courses if provided
-#     course_ids = request.data.get('course_ids')
-#     if course_ids:
-#         courses = Courses.objects.filter(id__in=course_ids)
-#         if not courses:
-#             return Response({
-#                 "status": "error",
-#                 "message": "Invalid course IDs"
-#             }, status=status.HTTP_400_BAD_REQUEST)
-#         # Delete existing enrollments and add new ones
-#         student.enrollment_set.all().delete()
-#         for course in courses:
-#             Enrollment.objects.create(
-#                 student=student,
-#                 course=course,
-#                 date_of_joining=datetime.strptime(request.data.get('date_of_joining', ''), '%Y-%m-%d'),
-#                 expiry_date=datetime.strptime(request.data.get('expiry_date', ''), '%Y-%m-%d')
-#             )
-    
-#     student.save()
-#     return Response({
-#         "status": "success",
-#         "message": "Student updated successfully"
-#     }, status=status.HTTP_200_OK)
-
-
-# # Delete Student
-# @api_view(['DELETE'])
-# def delete_student(request, student_id):
-#     try:
-#         student = Students.objects.get(id=student_id)
-#         student.delete()
-#         return Response({
-#             "status": "success",
-#             "message": "Student deleted successfully"
-#         }, status=status.HTTP_204_NO_CONTENT)
-#     except Students.DoesNotExist:
-#         return Response({
-#             "status": "error",
-#             "message": "Student not found"
-#         }, status=status.HTTP_404_NOT_FOUND)
-
-# from django.db.models import Q
-# from rest_framework.decorators import api_view
-# from rest_framework.response import Response
-# from rest_framework import status
-# from students.models import Students
-
-# @api_view(['GET'])
-# def search(request):
-#     # Extract query parameters
-#     name = request.query_params.get("name", None)
-#     email = request.query_params.get("email", None)
-#     phone = request.query_params.get("phone", None)
-#     course_title = request.query_params.get("course", None)
-#     enrollment_date = request.query_params.get("enrollment_date", None)  # Format: YYYY-MM-DD
-#     status_param = request.query_params.get("status", None)
-
-#     try:
-#         # Build the query dynamically
-#         query = Q()
-#         if name:
-#             query &= Q(firstname__icontains=name) | Q(lastname__icontains=name)
-#         if email:
-#             query &= Q(email__icontains=email)
-#         if phone:
-#             query &= Q(phone__icontains=phone)
-#         if course_title:
-#             query &= Q(courses__title__icontains=course_title)  # Assuming Many-to-Many relationship
-#         if enrollment_date:
-#             query &= Q(studentcourse__date_of_joining=enrollment_date)  # Adjust if field differs
-#         if status_param:
-#             query &= Q(is_active=(status_param.lower() == "active"))
-
-#         # Fetch filtered students
-#         students = Students.objects.filter(query).distinct()
-
-#         # Build response data
-#         student_data = []
-#         for student in students:
-#             courses = [
-#                 {
-#                     "title": course.title,
-#                     "description": course.description,
-#                     "instructor_name": course.instructor_name,
-#                     # "enrollment_date": course,enrollment_date,
-#                     "phone": course.phone,
-#                     "dob": course.dob,
-#                 }
-#                 for course in student.courses.all()  # Assuming Many-to-Many relationship
-#             ]
-
-#             student_data.append({
-#                 "firstname": student.firstname,
-#                 "lastname": student.lastname,
-#                 "email": student.email,
-#                 "phone": student.phone,
-#                 "DOB": student.dob,
-#                 "address": student.address,
-#                 "courses": courses,
-#                 "is_active": student.is_active,
-#                 "created_on": student.created_on,
-#                 "last_updated_on": student.last_updated_on,
-#             })
-
-#         # Return success response
-#         return Response({
-#             "status": "success",
-#             "data": student_data
-#         }, status=status.HTTP_200_OK)
-
-#     except Exception as e:
-#         # Return error response in case of failure
-#         return Response({
-#             "status": "error",
-#             "message": "An error occurred while processing your request",
-#             "details": str(e)
-#         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+                return Response(
+                    {"message": "Student deleted successfully."},
+                    status=status.HTTP_204_NO_CONTENT,
+                )
+        except Students.DoesNotExist:
+            return Response(
+                {"message": "Student not found."}, status=status.HTTP_404_NOT_FOUND
+            )
+        except Exception as e:
+            # Catch all other exceptions and provide a structured error message
+            return Response(
+                {"message": f"An unexpected error occurred: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )

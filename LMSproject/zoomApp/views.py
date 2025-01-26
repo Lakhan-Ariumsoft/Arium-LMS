@@ -334,21 +334,233 @@ def helperFunction(meeting_id):
         print(f"Critical error in upload_recordings for meeting ID '{meeting_id}': {e}")
 
 
-
-
-
-from django.http import JsonResponse
-from django.views import View
+        
 from django.shortcuts import get_object_or_404
-from django.utils.decorators import method_decorator
-from django.contrib.auth.decorators import login_required
-from django.core.exceptions import PermissionDenied
+from django.http import JsonResponse
+from rest_framework import status
+from rest_framework.views import APIView
+from rest_framework.response import Response
 from .models import ZoomMeeting
-from courses.models import Courses  # Ensure this is imported correctly
-from django.views.decorators.csrf import csrf_exempt
-import json
+from zoomApp.serializers import ZoomMeetingSerializer
+from courses.models import Courses
+from datetime import datetime
 
-from users.decorators import role_required 
+class ZoomMeetingListCreateAPIView(APIView):
+    """
+    Handle GET and POST requests for Zoom meetings.
+    """
+    def get(self, request):
+        try:
+            # Fetching filter parameters from the request
+            unassignedVideos = request.GET.get('unassignedVideos', None)
+            dataRange = request.GET.get('dataRange', None)
+            searchCourse = request.GET.get('searchCourse', None)
+            searchText = request.GET.get('searchText', None)
+
+            # Filtering meetings based on parameters
+            zoom_meetings = ZoomMeeting.objects.all()
+
+            # Filtering by unassignedVideos (course is null)
+            if unassignedVideos:
+                zoom_meetings = zoom_meetings.filter(course__isnull=True)
+
+            # Filtering by dataRange (assuming dataRange is a date range e.g., "start_date:end_date")
+            if dataRange:
+                start_date, end_date = dataRange.split(":")
+                zoom_meetings = zoom_meetings.filter(created_at__range=[start_date, end_date])
+
+            # Filtering by course (search by course name or course ID)
+            if searchCourse:
+                try:
+                    course = Courses.objects.get(name__icontains=searchCourse)  # Assuming search by name
+                    zoom_meetings = zoom_meetings.filter(course=course)
+                except Courses.DoesNotExist:
+                    return JsonResponse({"status": False, "message": "Course not found."}, status=status.HTTP_400_BAD_REQUEST)
+
+            # Filtering by searchText (for title or meeting_id)
+            if searchText:
+                zoom_meetings = zoom_meetings.filter(title__icontains=searchText) | zoom_meetings.filter(meeting_id__icontains=searchText)
+
+            # Pagination logic
+            page = int(request.GET.get('page', 1))
+            limit = int(request.GET.get('limit', 10))
+            start_index = (page - 1) * limit
+            end_index = start_index + limit
+            zoom_meetings = zoom_meetings[start_index:end_index]
+
+            # Prepare the data with added 'status' and 'courseName' fields
+            meetings_data = []
+            for meeting in zoom_meetings:
+                status = "assigned" if meeting.course else "unassigned"
+                course_name = meeting.course.name if meeting.course else ""
+                meetings_data.append({
+                    "id":meeting.id,
+                    "title": meeting.title,
+                    "courseName": course_name,
+                    "duration": meeting.duration,
+                    "updated_at": meeting.updated_at,
+                    "status": status,
+                })
+
+            # Serialize the data (optional, if using serializer for other fields)
+            total = ZoomMeeting.objects.count()
+
+            # Prepare the response
+            response_data = {
+                "status": True,
+                "message": "Zoom meetings fetched.",
+                "data": meetings_data,
+                "total": total,
+                "limit": limit,
+                "page": page,
+                "pages": (total // limit) + (1 if total % limit > 0 else 0)
+            }
+
+            return JsonResponse(response_data)
+
+        except Exception as e:
+            return JsonResponse({"status": False, "message": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    def post(self, request, *args, **kwargs):
+        try:
+            # Create a new Zoom meeting
+            serializer = ZoomMeetingSerializer(data=request.data)
+            if serializer.is_valid():
+                zoom_meeting = serializer.save()
+
+                # Return the successful response
+                return Response({
+                    "status": True,
+                    "message": "Meeting created successfully.",
+                    "data": serializer.data
+                }, status=status.HTTP_201_CREATED)
+
+            return Response({
+                "status": False,
+                "message": "Invalid data.",
+                "errors": serializer.errors
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        except Exception as e:
+            # Log the exception for debugging
+            print(f"Error creating Zoom meeting: {e}")
+
+            # Return the error response
+            return Response({
+                "status": False,
+                "message": str(e)  # This will give you a string message as the error
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class ZoomMeetingDetailAPIView(APIView):
+    """
+    Handle GET, PUT, and DELETE requests for a single Zoom meeting.
+    """
+    def get(self, request, pk):
+        try:
+            zoom_meeting = get_object_or_404(ZoomMeeting, pk=pk)
+            status = "assigned" if zoom_meeting.course else "unassigned"
+            course_name = zoom_meeting.course.name if zoom_meeting.course else ""
+
+            return JsonResponse({
+                "status": True,
+                "message": "Zoom meeting fetched.",
+                "data": {
+                    "title": zoom_meeting.title,
+                    "courseName": course_name,
+                    "duration": zoom_meeting.duration,
+                    "updated_at": zoom_meeting.updated_at,
+                    "status": status,
+                }
+            })
+
+        except ZoomMeeting.DoesNotExist:
+            return JsonResponse({"status": False, "message": "Zoom meeting not found."}, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            return JsonResponse({"status": False, "message": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    def put(self, request, pk):
+        try:
+            # Fetch the zoom meeting to update
+            zoom_meeting = get_object_or_404(ZoomMeeting, pk=pk)
+
+            # Deserialize the incoming data
+            serializer = ZoomMeetingSerializer(zoom_meeting, data=request.data, partial=True)
+
+            if serializer.is_valid():
+                # Save the updated ZoomMeeting
+                updated_meeting = serializer.save()
+
+                # Update videoCount for the associated course
+                if updated_meeting.course:
+                    course = updated_meeting.course
+                    course.videoCount += 1
+                    course.save()
+
+                status = "assigned" if updated_meeting.course else "unassigned"
+                course_name = updated_meeting.course.name if updated_meeting.course else ""
+
+                return JsonResponse({
+                    "status": True,
+                    "message": "Zoom meeting updated successfully.",
+                    "data": {
+                        "title": updated_meeting.title,
+                        "courseName": course_name,
+                        "duration": updated_meeting.duration,
+                        "updated_at": updated_meeting.updated_at,
+                        "status": status,
+                    }
+                })
+
+            else:
+                return JsonResponse({
+                    "status": False,
+                    "message": "Validation failed.",
+                    "data": serializer.errors
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+        except ZoomMeeting.DoesNotExist:
+            return JsonResponse({"status": False, "message": "Zoom meeting not found."}, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            return JsonResponse({"status": False, "message": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    def delete(self, request, pk):
+        try:
+            # Fetch the zoom meeting to delete
+            zoom_meeting = get_object_or_404(ZoomMeeting, pk=pk)
+
+            # Decrease videoCount for the associated course
+            if zoom_meeting.course:
+                course = zoom_meeting.course
+                course.videoCount -= 1
+                course.save()
+
+            zoom_meeting.delete()
+
+            return JsonResponse({
+                "status": True,
+                "message": "Zoom meeting deleted successfully."
+            })
+
+        except ZoomMeeting.DoesNotExist:
+            return JsonResponse({"status": False, "message": "Zoom meeting not found."}, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            return JsonResponse({"status": False, "message": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+
+# from django.http import JsonResponse
+# from django.views import View
+# from django.shortcuts import get_object_or_404
+# from django.utils.decorators import method_decorator
+# from django.contrib.auth.decorators import login_required
+# from django.core.exceptions import PermissionDenied
+# from .models import ZoomMeeting
+# from courses.models import Courses  # Ensure this is imported correctly
+# from django.views.decorators.csrf import csrf_exempt
+# import json
+
+# from users.decorators import role_required 
 
 # # Decorator to check role
 # def role_required(roles):
@@ -363,114 +575,114 @@ from users.decorators import role_required
 #     return decorator
 
 
-@method_decorator([login_required, role_required(['moderator', 'instructor'])], name='dispatch')
-@method_decorator(csrf_exempt, name='dispatch')  # To allow POST, PUT, and DELETE without CSRF token
-class ZoomMeetingView(View):
-    def get(self, request, meeting_id=None):
-        """
-        Retrieve a specific Zoom meeting or list all meetings.
-        """
-        if request.user.role == 'student':
-            return JsonResponse({"detail": "Permission Denied"}, status=403)
+# @method_decorator([login_required, role_required(['moderator', 'instructor'])], name='dispatch')
+# @method_decorator(csrf_exempt, name='dispatch')  # To allow POST, PUT, and DELETE without CSRF token
+# class ZoomMeetingView(View):
+#     def get(self, request, meeting_id=None):
+#         """
+#         Retrieve a specific Zoom meeting or list all meetings.
+#         """
+#         if request.user.role == 'Student':
+#             return JsonResponse({"detail": "Permission Denied"}, status=403)
 
-        if meeting_id:
-            meeting = get_object_or_404(ZoomMeeting, id=meeting_id)
-            data = {
-                "id": meeting.id,
-                "course": meeting.course.title if meeting.course else None,
-                "title": meeting.title,
-                "meeting_id": meeting.meeting_id,
-                "duration": meeting.duration,
-                "recording_url": meeting.recording_url,
-                "created_at": meeting.created_at,
-                "updated_at": meeting.updated_at,
-            }
-            return JsonResponse(data, status=200)
-        else:
-            meetings = ZoomMeeting.objects.all()
-            data = [
-                {
-                    "id": meeting.id,
-                    "course": meeting.course.title if meeting.course else None,
-                    "title": meeting.title,
-                    "meeting_id": meeting.meeting_id,
-                    "duration": meeting.duration,
-                    "recording_url": meeting.recording_url,
-                    "created_at": meeting.created_at,
-                    "updated_at": meeting.updated_at,
-                }
-                for meeting in meetings
-            ]
-            return JsonResponse(data, safe=False, status=200)
+#         if meeting_id:
+#             meeting = get_object_or_404(ZoomMeeting, id=meeting_id)
+#             data = {
+#                 "id": meeting.id,
+#                 "course": meeting.course.title if meeting.course else None,
+#                 "title": meeting.title,
+#                 "meeting_id": meeting.meeting_id,
+#                 "duration": meeting.duration,
+#                 "recording_url": meeting.recording_url,
+#                 "created_at": meeting.created_at,
+#                 "updated_at": meeting.updated_at,
+#             }
+#             return JsonResponse(data, status=200)
+#         else:
+#             meetings = ZoomMeeting.objects.all()
+#             data = [
+#                 {
+#                     "id": meeting.id,
+#                     "course": meeting.course.title if meeting.course else None,
+#                     "title": meeting.title,
+#                     "meeting_id": meeting.meeting_id,
+#                     "duration": meeting.duration,
+#                     "recording_url": meeting.recording_url,
+#                     "created_at": meeting.created_at,
+#                     "updated_at": meeting.updated_at,
+#                 }
+#                 for meeting in meetings
+#             ]
+#             return JsonResponse(data, safe=False, status=200)
 
-    def post(self, request):
-        """
-        Create a new Zoom meeting.
-        """
-        try:
+#     def post(self, request):
+#         """
+#         Create a new Zoom meeting.
+#         """
+#         try:
             
-            if request.user.role == 'student':
-                return JsonResponse({"detail": "Permission Denied"}, status=403)
+#             if request.user.role == 'student':
+#                 return JsonResponse({"detail": "Permission Denied"}, status=403)
         
-            data = json.loads(request.body)
-            course_id = data.get('course')
-            course = Courses.objects.get(id=course_id) if course_id else None
+#             data = json.loads(request.body)
+#             course_id = data.get('course')
+#             course = Courses.objects.get(id=course_id) if course_id else None
 
-            meeting = ZoomMeeting.objects.create(
-                course=course,
-                title=data['title'],
-                meeting_id=data['meeting_id'],
-                duration=data['duration'],
-                recording_url=data['recording_url'],
-            )
-            return JsonResponse({"message": "Zoom meeting created successfully", "id": meeting.id}, status=201)
-        except Courses.DoesNotExist:
-            return JsonResponse({"error": "Course not found"}, status=404)
-        except KeyError as e:
-            return JsonResponse({"error": f"Missing field: {e}"}, status=400)
+#             meeting = ZoomMeeting.objects.create(
+#                 course=course,
+#                 title=data['title'],
+#                 meeting_id=data['meeting_id'],
+#                 duration=data['duration'],
+#                 recording_url=data['recording_url'],
+#             )
+#             return JsonResponse({"message": "Zoom meeting created successfully", "id": meeting.id}, status=201)
+#         except Courses.DoesNotExist:
+#             return JsonResponse({"error": "Course not found"}, status=404)
+#         except KeyError as e:
+#             return JsonResponse({"error": f"Missing field: {e}"}, status=400)
 
-    def put(self, request, meeting_id):
-        """
-        Update an existing Zoom meeting.
-        """
+#     def put(self, request, pk):
+#         """
+#         Update an existing Zoom meeting.
+#         """
 
-        if request.user.role == 'student':
-            return JsonResponse({"detail": "Permission Denied"}, status=403)
+#         if request.user.role == 'student':
+#             return JsonResponse({"detail": "Permission Denied"}, status=403)
         
-        meeting = get_object_or_404(ZoomMeeting, id=meeting_id)
-        try:
-            data = json.loads(request.body)
-            course_id = data.get('course')
-            course = Courses.objects.get(id=course_id) if course_id else None
+#         meeting = get_object_or_404(ZoomMeeting, id=pk)
+#         try:
+#             data = json.loads(request.body)
+#             course_id = data.get('course')
+#             course = Courses.objects.get(id=course_id) if course_id else None
 
-            meeting.course = course
-            meeting.title = data.get('title', meeting.title)
-            meeting.meeting_id = data.get('meeting_id', meeting.meeting_id)
-            meeting.duration = data.get('duration', meeting.duration)
-            meeting.recording_url = data.get('recording_url', meeting.recording_url)
-            meeting.save()
+#             meeting.course = course
+#             meeting.title = data.get('title', meeting.title)
+#             meeting.meeting_id = data.get('meeting_id', meeting.meeting_id)
+#             meeting.duration = data.get('duration', meeting.duration)
+#             meeting.recording_url = data.get('recording_url', meeting.recording_url)
+#             meeting.save()
 
-            return JsonResponse({"message": "Zoom meeting updated successfully"}, status=200)
-        except Courses.DoesNotExist:
-            return JsonResponse({"error": "Course not found"}, status=404)
-        except KeyError as e:
-            return JsonResponse({"error": f"Missing field: {e}"}, status=400)
+#             return JsonResponse({"message": "Zoom meeting updated successfully"}, status=200)
+#         except Courses.DoesNotExist:
+#             return JsonResponse({"error": "Course not found"}, status=404)
+#         except KeyError as e:
+#             return JsonResponse({"error": f"Missing field: {e}"}, status=400)
 
-    def delete(self, request, meeting_id):
-        """
-        Delete a Zoom meeting.
-        """
+#     def delete(self, request, meeting_id):
+#         """
+#         Delete a Zoom meeting.
+#         """
 
-        if request.user.role == 'student':
-            return JsonResponse({"detail": "Permission Denied"}, status=403)
+#         if request.user.role == 'student':
+#             return JsonResponse({"detail": "Permission Denied"}, status=403)
         
-        meeting = get_object_or_404(ZoomMeeting, id=meeting_id)
-        meeting.delete()
-        return JsonResponse({"message": "Zoom meeting deleted successfully"}, status=200)
+#         meeting = get_object_or_404(ZoomMeeting, id=meeting_id)
+#         meeting.delete()
+#         return JsonResponse({"message": "Zoom meeting deleted successfully"}, status=200)
 
 
 
-
+# ]]]]]]]]]]'']
 
 # from django.http import JsonResponse
 # from django.views import View

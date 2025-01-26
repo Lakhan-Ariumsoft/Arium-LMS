@@ -1,11 +1,19 @@
 from django.contrib.auth import login
-from .models import CustomUser
+from .models import User
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.permissions import AllowAny
+from django.middleware.csrf import get_token
+import os
+
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import status
+from rest_framework_simplejwt.tokens import RefreshToken
 
 class LoginAPIView(APIView):
     """
@@ -15,14 +23,17 @@ class LoginAPIView(APIView):
 
     def post(self, request):
         phone = request.data.get("phone")
-        password = request.data.get("password")
+        countryCode = request.data.get("countryCode")
 
-        if not phone or not password:
+        # password = request.data.get("password")
+        password = os.getenv("DEFAULT_USER_PASSWORD")
+
+        if not phone:
             return Response({"detail": "Phone and password are required."}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
             # Get user by phone
-            user = CustomUser.objects.get(phone=phone)
+            user = User.objects.get(phone=phone , countryCode = countryCode)
 
             # Check password
             if user.check_password(password):
@@ -34,23 +45,27 @@ class LoginAPIView(APIView):
                 access_token = str(refresh.access_token)
                 refresh_token = str(refresh)
 
+                csrf_token = get_token(request)
+
                 return Response({
                     "message": "Login successful.",
                     "access_token": access_token,
                     "refresh_token": refresh_token,
+                    "csrf_token": csrf_token,
                     "user": {
                         "id": user.id,
                         "email": user.email,
                         "phone": user.phone,
-                        "role": user.role,
-                        "name": user.get_full_name()
+                        "role": str(user.role),
+                        "name": user.first_name + user.last_name
                     }
                 }, status=status.HTTP_200_OK)
             else:
                 return Response({"detail": "Invalid credentials."}, status=status.HTTP_401_UNAUTHORIZED)
 
-        except CustomUser.DoesNotExist:
+        except User.DoesNotExist:
             return Response({"detail": "User with this phone does not exist."}, status=status.HTTP_404_NOT_FOUND)
+
 
 
 
@@ -70,11 +85,17 @@ class LogoutAPIView(APIView):
             # Blacklist the refresh token
             token = RefreshToken(refresh_token)
             token.blacklist()
-
-            return Response({"message": "Logout successful."}, status=status.HTTP_200_OK)
-        except Exception as e:
+            
+            # Create a successful logout response
+            response = Response({"message": "Logout successful."}, status=status.HTTP_200_OK)
+            
+            # Clear cookies
+            response.delete_cookie("csrftoken")  # Clear the CSRF cookie
+            response.delete_cookie("sessionid")  # Clear the session cookie if used
+            
+            return response  # Return the response object
+        except Exception:
             return Response({"detail": "Invalid or expired refresh token."}, status=status.HTTP_400_BAD_REQUEST)
-
 
 
 

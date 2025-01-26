@@ -1,88 +1,47 @@
-
-# # Register your models here.
-# from django.contrib import admin
-# from .models import Role,Permission
-
-# class RolesPermissionAdmin(admin.ModelAdmin):
-#     list_display = (
-#         'id','role', 'meetings_read', 'meetings_write', 'meetings_full',
-#         'courses_read', 'courses_write', 'courses_full', 
-#         'users_read', 'users_write', 'users_full'
-#     )
-#     list_filter = (
-#         'meetings_read', 'meetings_write', 'meetings_full', 
-#         'courses_read', 'courses_write', 'courses_full', 
-#         'users_read', 'users_write', 'users_full'
-#     )
-#     search_fields = ('id',)
-    
-#     # Optionally, you can add fieldsets to group permissions logically if needed
-#     fieldsets = (
-#         ('rolepermissions',{'fields': ('role',)}),
-#         ('Meeting Permissions', {'fields': ('meetings_read', 'meetings_write', 'meetings_full')}),
-#         ('Course Permissions', {'fields': ('courses_read', 'courses_write', 'courses_full')}),
-#         ('User Permissions', {'fields': ('users_read', 'users_write', 'users_full')}),
-#     )
-
-# from django.contrib import admin
-# from django.contrib.auth.admin import UserAdmin
-# from .models import Profile
-
-# class CustomUserAdmin(UserAdmin):
-#     model = Profile
-
-#     # Define the fields to be displayed in the list view
-#     list_display = ('firstname', 'lastname', 'email', 'phone', 'dob', 'is_active', 'role', 'created_on')
-
-#     # Define the fields to be used in the search functionality
-#     search_fields = ('email', 'firstname', 'lastname', 'phone')
-
-#     # Define the fields to be displayed when editing a user
-#     fieldsets = (
-#         (None, {'fields': ('email', 'password')}),
-#         ('Personal info', {'fields': ('firstname', 'lastname', 'dob', 'address', 'phone', 'role','is_active')}),
-#     )
-
-#     # Define which fields should be used in the "Add User" form
-#     add_fieldsets = (
-#         (None, {
-#             'fields': ('email', 'password1', 'password2', 'firstname', 'lastname', 'dob', 'address', 'phone', 'role', 'is_active'),
-#         }),
-#     )
-
-#     # Optionally, exclude the 'created_on' field explicitly (in case it appears in any other places)
-#     exclude = ('created_on','last_updated_on')
-
-#     # Optionally, allow sorting based on any of the fields in the list display
-#     ordering = ('created_on',)
-
-#     # Remove 'is_staff' if it was previously added to `list_filter` or `ordering`
-#     list_filter = ('is_active', 'role')  # Use fields that actually exist in your model
-
-# # Register the customized UserAdmin
-# admin.site.register(Profile, CustomUserAdmin)
-
-# admin.site.register(Role)
-# admin.site.register(Permission, RolesPermissionAdmin)
-
-# from django.contrib import admin
-
-# # Register your models here.
-
-
-
 from django.contrib import admin
-from django.contrib.auth.admin import UserAdmin
-from .models import CustomUser
+from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
+from django.contrib.auth.models import Group, Permission
+from .models import User,Role,Permission
 
-class CustomUserAdmin(UserAdmin):
-    model = CustomUser
-    fieldsets = UserAdmin.fieldsets + (
-        ('Additional Info', {'fields': ('role', 'phone')}),
-    )
-    add_fieldsets = UserAdmin.add_fieldsets + (
-        ('Additional Info', {'fields': ('role', 'phone')}),
-    )
-    list_display = ['username', 'email', 'role', 'phone']
 
-admin.site.register(CustomUser, CustomUserAdmin)
+
+class PermissionAdmin(admin.ModelAdmin):
+    list_display = ('name', 'can_read_users', 'can_write_users', 'can_read_courses', 'can_write_courses', 'can_read_meetings', 'can_write_meetings')
+    search_fields = ('name',)
+    list_filter = ('can_read_users', 'can_write_users', 'can_read_courses', 'can_write_courses', 'can_read_meetings', 'can_write_meetings')
+
+class RoleAdmin(admin.ModelAdmin):
+    list_display = ('name', 'permissions')
+    search_fields = ('name',)
+    # filter_horizontal = ('permissions',) 
+
+class UserAdmin(BaseUserAdmin):
+    # Fields to display in the list view
+    list_display = ('username', 'email', 'firstname', 'lastname','is_active', 'is_admin')
+    list_filter = ('is_active', 'is_admin')
+
+    # Fieldsets without groups and permissions
+    fieldsets = (
+        (None, {'fields': ('username', 'password')}),
+        ('Personal Info', {'fields': ('firstname', 'lastname', 'email', 'phone', 'countryCode', 'dob', 'address','role')}),
+        ('Status', {'fields': ('is_active', 'is_admin', 'is_superuser')}),
+    )
+
+    # Add user form without groups and permissions
+    add_fieldsets = (
+        (None, {
+            'classes': ('wide',),
+            'fields': ('username', 'email', 'password1', 'password2', 'firstname', 'lastname'),
+        }),
+    )
+
+    search_fields = ('username', 'email', 'firstname', 'lastname', 'phone' ,'countryCode')
+    ordering = ('username',)
+
+
+
+admin.site.register(Permission, PermissionAdmin)
+admin.site.register(Role, RoleAdmin)
+admin.site.register(User, UserAdmin)
+
+admin.site.unregister(Group)
