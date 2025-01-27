@@ -20,7 +20,8 @@ COPY . /home/app/
 # Expose the port Django runs on
 EXPOSE 8000
 
-WORKDIR /home/BE/Arium-LMS/LMSproject
+
+WORKDIR /home/app/LMSproject
 # Run the Django development server (customize if needed for production)
 CMD ["python", "manage.py", "runserver", "0.0.0.0:8000"]
 
