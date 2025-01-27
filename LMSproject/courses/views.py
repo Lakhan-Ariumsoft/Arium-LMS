@@ -199,3 +199,20 @@ class CourseView(APIView):
             'status': True,
             'message': 'Course deleted successfully.'
         }, status=status.HTTP_204_NO_CONTENT)
+
+
+from django.http import JsonResponse
+
+class CourseListView(APIView):
+    def get(self, request):
+        # Fetch all courses and their ids
+        courses = Courses.objects.all()
+        data = [{"id": course.id, "title": course.courseName} for course in courses]
+        return JsonResponse(data, safe=False)
+
+class InstructorListView(APIView):
+    def get(self, request):
+        # Fetch instructors from Courses model
+        instructors = Courses.objects.all()
+        data = [{"instructor": course.instructorName} for course in instructors]
+        return JsonResponse(data, safe=False)
