@@ -7,7 +7,6 @@ FROM python:3.12-slim
 
 # Set the working directory inside the container
 WORKDIR /home/app
-
 # Copy the requirements file to the working directory
 COPY requirements.txt /home/app/
 
@@ -21,5 +20,8 @@ COPY . /home/app/
 # Expose the port Django runs on
 EXPOSE 8000
 
+WORKDIR /home/BE/Arium-LMS/LMSproject
 # Run the Django development server (customize if needed for production)
 CMD ["python", "manage.py", "runserver", "0.0.0.0:8000"]
+
+
