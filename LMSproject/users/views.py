@@ -26,7 +26,8 @@ class LoginAPIView(APIView):
         countryCode = request.data.get("countryCode")
 
         # password = request.data.get("password")
-        password = os.getenv("DEFAULT_USER_PASSWORD")
+        # password = os.getenv("DEFAULT_USER_PASSWORD")
+        password = "Pass@1234"
 
         if not phone:
             return Response({"detail": "Phone and password are required."}, status=status.HTTP_400_BAD_REQUEST)
