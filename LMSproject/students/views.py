@@ -43,16 +43,15 @@ def get_paginated_students(request, students_queryset):
             enrollments = Enrollment.objects.filter(student=student)
             student_serializer = StudentsSerializer(student)
 
-            # Extract enrolled courses and their enrollment dates
             enrolled_courses = []
-            enrolled_dates = []
 
             for enrollment in enrollments:
-                enrolled_courses.append(enrollment.courses.courseName)
-                enrolled_dates.append(( 
-                    enrollment.enrollmentDate.isoformat() if enrollment.enrollmentDate else "",
-                    enrollment.expiryDate.isoformat() if enrollment.expiryDate else ""
-                ))
+                enrolled_courses.append({
+                    "course": enrollment.courses.courseName,
+                    "start_date": enrollment.enrollmentDate.isoformat() if enrollment.enrollmentDate else "",
+                    "end_date": enrollment.expiryDate.isoformat() if enrollment.expiryDate else ""
+                })
+
 
             student_data.append({
                 "_id": student.id,
@@ -62,7 +61,6 @@ def get_paginated_students(request, students_queryset):
                 "email": student.email,
                 "status": student.status,
                 "enrolled_courses": enrolled_courses,
-                "enrolled_dates": enrolled_dates,
             })
 
         # Return paginated response
