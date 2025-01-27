@@ -237,7 +237,6 @@ class StudentsDetailAPIView(APIView):
         except Students.DoesNotExist:
             return Response({"error": "Student not found."}, status=status.HTTP_404_NOT_FOUND)
 
-
     def put(self, request, pk=None):
         try:
             # Fetch the student object
@@ -254,26 +253,22 @@ class StudentsDetailAPIView(APIView):
                     user_serializer = UserSerializer(user, data=request.data, partial=True)
                     if user_serializer.is_valid():
                         user_serializer.save()  # Save the updated user
-                        # Return success message indicating user was updated
-                        return Response({
-                            "message": "Student and associated User successfully updated.",
-                            "data": student_serializer.data
-                        }, status=status.HTTP_200_OK)
                     else:
                         return Response({
                             "error": "User update failed.",
                             "details": user_serializer.errors
                         }, status=status.HTTP_400_BAD_REQUEST)
-                
+
                 # Handle enrollment updates if any
                 if 'enrollments' in request.data:
                     for enrollment_data in request.data['enrollments']:
+                        # Check if this enrollment exists for the student
                         enrollment = Enrollment.objects.filter(student=updated_student, id=enrollment_data.get('id')).first()
                         if enrollment:
                             # If enrollment exists, update it using the EnrollmentSerializer
                             enrollment_serializer = EnrollmentSerializer(enrollment, data=enrollment_data, partial=True)
                             if enrollment_serializer.is_valid():
-                                enrollment_serializer.save()
+                                enrollment_serializer.save()  # Save the updated enrollment
                             else:
                                 return Response({
                                     "error": "Enrollment update failed.",
@@ -284,7 +279,7 @@ class StudentsDetailAPIView(APIView):
                             enrollment_data['student'] = updated_student.id
                             new_enrollment_serializer = EnrollmentSerializer(data=enrollment_data)
                             if new_enrollment_serializer.is_valid():
-                                new_enrollment_serializer.save()
+                                new_enrollment_serializer.save()  # Save the new enrollment
                             else:
                                 return Response({
                                     "error": "Enrollment creation failed.",
@@ -308,7 +303,7 @@ class StudentsDetailAPIView(APIView):
         except Exception as e:
             return Response({"error": f"An unexpected error occurred: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-        
+
         
     def delete(self, request, pk=None):
         try:
@@ -336,10 +331,11 @@ class StudentsDetailAPIView(APIView):
 
                 # Check if the student is enrolled in any other course
                 if not checkStudentsEnrollment(student):
-                    # Mark the corresponding user as inactive
-                    user = student.user
-                    user.is_active = False
-                    user.save(update_fields=["is_active"])
+                    # If a `user` field exists
+                    if hasattr(student, "user"):
+                        user = student.user
+                        user.is_active = False
+                        user.save(update_fields=["is_active"])
 
                     # Delete the student record
                     student.delete()
