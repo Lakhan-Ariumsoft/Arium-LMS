@@ -45,11 +45,13 @@ INSTALLED_APPS = [
     'rest_framework',
     'users',
     'rest_framework.authtoken',
-    'rest_framework_simplejwt.token_blacklist'
+    'rest_framework_simplejwt.token_blacklist','corsheaders',
+    'corsheaders',
 ]
 
 MIDDLEWARE = [
     # 'whitenoise.middleware.WhiteNoiseMiddleware'
+    'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -87,9 +89,15 @@ CSRF_TRUSTED_ORIGINS = [
     'http://localhost:5174',
     'http://localhost:5175',
     'http://localhost:3001',
-    'http://localhost:4000'
+    'http://localhost:4000',
+    "http://35.207.238.34", 
 
     # Add this line for local testing
+]
+
+CORS_ALLOWED_ORIGINS = [
+    "http://localhost:5173",  # Frontend origin
+    "http://35.207.238.34",  # Backend IP
 ]
 
 
@@ -182,3 +190,7 @@ SIMPLE_JWT = {
 #         'PORT': '5432', 
 #     }
 # }
+
+
+CORS_ALLOW_ALL_ORIGINS = True
+CORS_ALLOW_CREDENTIALS = True
