@@ -25,7 +25,7 @@ SECRET_KEY = 'django-insecure--kab(pu%($(ha@#i2o%h+(1!v(6kk2ft-p7wwe#a@im4f1)w!q
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = ['*','127.0.0.1', 'localhost', 'f997-103-160-167-162.ngrok-free.app' , 'ariumzoomlms.el.r.appspot.com']
+# ALLOWED_HOSTS = ['*','127.0.0.1', 'localhost', 'f997-103-160-167-162.ngrok-free.app' , 'ariumzoomlms.el.r.appspot.com']
 
 ALLOWED_HOSTS = ['*']
 
@@ -45,8 +45,8 @@ INSTALLED_APPS = [
     'rest_framework',
     'users',
     'rest_framework.authtoken',
-    'rest_framework_simplejwt.token_blacklist','corsheaders',
-    'corsheaders',
+    'rest_framework_simplejwt.token_blacklist',
+    'corsheaders'
 ]
 
 MIDDLEWARE = [
@@ -95,8 +95,9 @@ CSRF_TRUSTED_ORIGINS = [
     # Add this line for local testing
 ]
 
+
 CORS_ALLOWED_ORIGINS = [
-    "http://localhost:5173",  # Frontend origin
+    "http://localhost:5173",
     "http://35.207.238.34",  # Backend IP
 ]
 
