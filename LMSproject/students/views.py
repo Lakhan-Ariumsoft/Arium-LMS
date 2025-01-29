@@ -10,13 +10,16 @@ from .models import Students, Enrollment
 from .serializers import StudentsSerializer, EnrollmentSerializer 
 from users.serializers import UserSerializer
 from django.contrib.auth import get_user_model
-
+from datetime import datetime
 from rest_framework.response import Response
 from rest_framework import status
 from django.db.models import Q
 from django.core.paginator import Paginator, PageNotAnInteger, EmptyPage
 
-
+from django.db.models import Q
+from rest_framework.response import Response
+from rest_framework import status
+from math import ceil
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
@@ -25,6 +28,7 @@ from django.db.models import Q
 from .models import Students, Enrollment
 from zoomApp.models import ZoomMeeting
 from courses.models import Courses
+from .serializers import StudentsSerializer
 
 def get_paginated_students(request, students_queryset):
     """
@@ -111,20 +115,21 @@ class StudentsListCreateAPIView(APIView):
     View to handle fetching all students, creating a student, and search/filter students with proper exception handling.
     """
 
-    from django.db.models import Q
-    from rest_framework.response import Response
-    from rest_framework import status
+   
 
     def get(self, request):
         try:
-            # Get query parameters for filtering
+            # Extract query parameters
             search_text = request.query_params.get('searchText', None)
             search_course = request.query_params.get('searchCourse', None)
             search_status = request.query_params.get('searchStatus', None)
 
-            # Build the Q object to filter the queryset
-            query = Q()
+            # Extract pagination parameters (default values if not provided)
+            limit = int(request.query_params.get('limit', 10))  # Default to 10
+            page = int(request.query_params.get('page', 1))  # Default to 1
 
+            # Build the query filter
+            query = Q()
             if search_text:
                 query |= Q(firstname__icontains=search_text) | Q(lastname__icontains=search_text)
                 query |= Q(email__icontains=search_text) | Q(phone__icontains=search_text)
@@ -136,44 +141,102 @@ class StudentsListCreateAPIView(APIView):
             if search_status:
                 query &= Q(status__icontains=search_status)
 
-            # Filter students based on the query
+            # Fetch and count total records
             students_queryset = Students.objects.filter(query).distinct().order_by('id')
+            total_records = students_queryset.count()
 
-            # Case 1: No students in the database
-            if not Students.objects.exists():
-                return Response({"message": "No records found in the database."}, status=status.HTTP_404_NOT_FOUND)
+            # Calculate total pages (handling case where total is 0)
+            total_pages = ceil(total_records / limit) if total_records > 0 else 1
 
-            # Case 2: Query parameter provided but no matching records found
-            if search_text or search_course or search_status:
-                if not students_queryset.exists():
-                    query_params = []
-                    if search_text:
-                        query_params.append(f"'{search_text}'")
-                    if search_course:
-                        query_params.append(f"'{search_course}'")
-                    if search_status:
-                        query_params.append(f"'{search_status}'")
+            # Apply pagination
+            start_index = (page - 1) * limit
+            end_index = start_index + limit
+            paginated_students = students_queryset[start_index:end_index]
 
-                    query_msg = ", ".join(query_params)
-                    return Response({"message": f"No data found for {query_msg}."}, status=status.HTTP_404_NOT_FOUND)
+            # Prepare response (ensuring format consistency)
+            response_data = {
+                "status": True,
+                "message": "Search records found." if paginated_students else "No search record found.",
+                "data":StudentsSerializer(paginated_students, many=True).data,  # Assuming `to_dict` exists
+                "total": total_records,
+                "limit": limit,
+                "page": page,
+                "pages": total_pages
+            }
 
-            # Case 3: Return paginated students
-            return get_paginated_students(request, students_queryset)
+            return Response(response_data, status=status.HTTP_200_OK)
 
         except Exception as e:
-            # Log the error if needed
-            print(f"Error occurred while fetching students: {str(e)}")
-            return Response(
-                {"message": f"An unexpected error occurred: {str(e)}"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
+            # Handle errors with a consistent response format
+            response_data = {
+                "status": False,
+                "message": f"An unexpected error occurred: {str(e)}",
+                "data": [],
+                "total": 0,
+                "limit": 10,
+                "page": 1,
+                "pages": 1
+            }
+            return Response(response_data, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    # def get(self, request):
+    #     try:
+    #         # Get query parameters for filtering
+    #         search_text = request.query_params.get('searchText', None)
+    #         search_course = request.query_params.get('searchCourse', None)
+    #         search_status = request.query_params.get('searchStatus', None)
+
+    #         # Build the Q object to filter the queryset
+    #         query = Q()
+
+    #         if search_text:
+    #             query |= Q(firstname__icontains=search_text) | Q(lastname__icontains=search_text)
+    #             query |= Q(email__icontains=search_text) | Q(phone__icontains=search_text)
+    #             query |= Q(status__icontains=search_text)
+
+    #         if search_course:
+    #             query &= Q(enrollment__courses__courseName__icontains=search_course)
+
+    #         if search_status:
+    #             query &= Q(status__icontains=search_status)
+
+    #         # Filter students based on the query
+    #         students_queryset = Students.objects.filter(query).distinct().order_by('id')
+
+    #         # Case 1: No students in the database
+    #         if not Students.objects.exists():
+    #             return Response({"message": "No records found in the database."}, status=status.HTTP_404_NOT_FOUND)
+
+    #         # Case 2: Query parameter provided but no matching records found
+    #         if search_text or search_course or search_status:
+    #             if not students_queryset.exists():
+    #                 # query_params = []
+    #                 # if search_text:
+    #                 #     query_params.append(f"'{search_text}'")
+    #                 # if search_course:
+    #                 #     query_params.append(f"'{search_course}'")
+    #                 # if search_status:
+    #                 #     query_params.append(f"'{search_status}'")
+
+    #                 # query_msg = ", ".join(query_params)
+    #                 return Response({"message": "No search data found"}, status=status.HTTP_404_NOT_FOUND)
+
+    #         # Case 3: Return paginated students
+    #         return get_paginated_students(request, students_queryset)
+
+    #     except Exception as e:
+    #         # Log the error if needed
+    #         print(f"Error occurred while fetching students: {str(e)}")
+    #         return Response(
+    #             {"message": f"An unexpected error occurred: {str(e)}"},
+    #             status=status.HTTP_500_INTERNAL_SERVER_ERROR
+    #         )
 
     def post(self, request):
         """
         Create a new student and enroll them in selected courses.
         """
         try:
-            # Wrap the entire operation in an atomic transaction
             with transaction.atomic():
                 student_data = request.data.get("student")
                 enrollment_data = request.data.get("enrollment")
@@ -202,19 +265,31 @@ class StudentsListCreateAPIView(APIView):
                     for enrollment in enrollment_data:
                         course_id = enrollment.get("course")
                         try:
-                            # Ensure the course exists
                             course = get_object_or_404(Courses, id=course_id)
 
-                            # Check if the student is already enrolled in the course
+                            # Ensure the student is not already enrolled
                             if Enrollment.objects.filter(student=student, courses=course).exists():
-                                raise ValueError(f"Student is already enrolled in the course: {course.courseName}")
+                                return Response(
+                                    {"status": "error", "message": f"Student is already enrolled in {course.courseName}."},
+                                    status=status.HTTP_400_BAD_REQUEST,
+                                )
+
+                            # Convert date strings to datetime.date objects
+                            enrollment_date = enrollment.get("enrollmentDate")
+                            expiry_date = enrollment.get("expiryDate")
+
+                            if enrollment_date:
+                                enrollment_date = datetime.strptime(enrollment_date, "%Y-%m-%d").date()
+
+                            if expiry_date:
+                                expiry_date = datetime.strptime(expiry_date, "%Y-%m-%d").date()
 
                             # Create enrollment
                             Enrollment.objects.create(
                                 student=student,
                                 courses=course,
-                                enrollmentDate=enrollment.get("enrollmentDate"),
-                                expiryDate=enrollment.get("expiryDate"),
+                                enrollmentDate=enrollment_date,
+                                expiryDate=expiry_date,
                             )
 
                             # Update the course's student count
@@ -222,9 +297,10 @@ class StudentsListCreateAPIView(APIView):
                             course.save(update_fields=["studentsCount"])
 
                         except Courses.DoesNotExist:
-                            raise ValueError(f"Course with ID {course_id} does not exist.")
-                        except Exception as e:
-                            raise ValueError(f"An error occurred while enrolling in course ID {course_id}: {str(e)}")
+                            return Response(
+                                {"status": "error", "message": f"Course with ID {course_id} does not exist."},
+                                status=status.HTTP_400_BAD_REQUEST,
+                            )
 
                     return Response(
                         {"status": "success", "data": student_serializer.data},
@@ -236,16 +312,10 @@ class StudentsListCreateAPIView(APIView):
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
-        except ValueError as e:
-            # Handle specific validation or business logic errors
-            return Response(
-                {"status": "error", "message": str(e)},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
         except Exception as e:
-            # Handle unexpected exceptions
+            print(f"Error: {e}")  # Debugging log
             return Response(
-                {"status": "error", "message": f"An unexpected error occurred: {str(e)}"},
+                {"status": "error", "message": f"An error occurred: {str(e)}"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 

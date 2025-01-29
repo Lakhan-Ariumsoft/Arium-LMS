@@ -12,9 +12,9 @@ class EnrollmentSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Enrollment
-        fields = ['student', 'courses', 'enrollmentDate', 'expiryDate']
+        fields = ['student', 'courses', 'enrollmentDate', 'expiryDate' , 'status']
 
 class StudentsSerializer(serializers.ModelSerializer):
     class Meta:
         model = Students
-        fields = ['id', 'firstname', 'lastname', 'email', 'phone', 'dob', 'address', 'courses','batch', 'status', 'created_on', 'updated_on']
+        fields = ['id', 'firstname', 'lastname', 'email', 'phone', 'dob','countryCode','address', 'courses','batch', 'created_on', 'updated_on']

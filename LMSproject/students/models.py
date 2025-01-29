@@ -9,13 +9,16 @@ from .models import User
 from users.models import Role  # Import Role model (adjust import path if necessary)
 from django.db.models.signals import post_save, pre_delete
 from django.http import JsonResponse
+from django.db.models.signals import post_save, pre_save
+from django.dispatch import receiver
 
 class Students(models.Model):
+    # user = models.OneToOneField(User, on_delete=models.CASCADE)
     firstname = models.CharField(max_length=50)
     lastname = models.CharField(max_length=50)
     email = models.EmailField(unique=True)
-    countryCode = models.CharField(max_length=10, blank=True, null=True , unique=True)
-    phone = models.CharField(max_length=15, blank=True, null=True , unique=True)
+    countryCode = models.CharField(max_length=10, blank=True)
+    phone = models.CharField(max_length=15, blank=True)
     dob = models.DateField(verbose_name="Date of Birth", blank=True, null=True)
     address = models.TextField(blank=True, null=True)
     batch = models.CharField(max_length=50, default="", blank=True)
@@ -28,15 +31,51 @@ class Students(models.Model):
         return f"{self.firstname} - {self.batch}"
 
 class Enrollment(models.Model):
+    STATUS_CHOICES = [
+        ('active', 'Active'),
+        ('expired', 'Expired'),
+        ('cancelled', 'Cancelled')
+    ]
     student = models.ForeignKey(Students, on_delete=models.CASCADE)
     courses = models.ForeignKey(Courses, on_delete=models.CASCADE)  # ForeignKey to Courses
     enrollmentDate = models.DateField(null=True, blank=True)
     expiryDate = models.DateField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='active')
+
 
     def __str__(self):
         return f"{self.student} - {self.courses.courseName}"
+
+
+
+# Signal to check and update enrollment status
+@receiver(pre_save, sender=Enrollment)
+def update_enrollment_status(sender, instance, **kwargs):
+    """Automatically update status based on expiryDate."""
+    if instance.expiryDate and instance.expiryDate < now().date():
+        instance.status = 'expired'
+
+@receiver(post_save, sender=Enrollment)
+def deactivate_student_if_no_active_enrollments(sender, instance, **kwargs):
+    """Deactivate student if all enrollments are expired or cancelled."""
+    from django.contrib.auth import get_user_model
+
+    User = get_user_model()
+    student = instance.student
+
+    # Check if the student has any active enrollments
+    active_enrollments = Enrollment.objects.filter(student=student, status='active').exists()
+
+    try:
+        user = User.objects.get(email=student.email)
+        if not active_enrollments:
+            user.is_active = False
+            user.save()
+    except User.DoesNotExist:
+        pass  # If no user is found, skip deactivation
+
 
 
 from django.db import transaction
@@ -45,6 +84,10 @@ from django.dispatch import receiver
 from django.utils.timezone import now
 from django.contrib.auth.hashers import make_password
 import os
+import logging
+logger = logging.getLogger(__name__)
+
+
 
 @receiver(post_save, sender=Students)
 def create_or_update_user_for_student(sender, instance, created, **kwargs):
@@ -55,10 +98,10 @@ def create_or_update_user_for_student(sender, instance, created, **kwargs):
         with transaction.atomic():
             # Fetch the numeric ID for the "Student" role
             student_role_id = Role.objects.get(name__iexact='student').id
-
+            logger.info(f"Updating or creating user for student {instance.id}")
             # Check if the student has an associated user
             user = User.objects.filter(email=instance.email).first()
-
+            print("aaaa",instance.countryCode , instance)
             if user:
                 # If user exists, update the user data
                 user.firstname = instance.firstname
@@ -93,11 +136,13 @@ def create_or_update_user_for_student(sender, instance, created, **kwargs):
     except Role.DoesNotExist:
         # Clean up the student record if the role is missing
         instance.delete()
+        logger.error(f"Error in create_or_update_user_for_student: {str(e)}")
         raise ValueError("Role 'Student' does not exist. The student record has been deleted.")
 
     except Exception as e:
         # Clean up the student record for any other errors
         instance.delete()
+        logger.error(f"Error in create_or_update_user_for_student: {str(e)}")
         raise ValueError(f"An error occurred while creating or updating the User: {e}")
 
 
@@ -136,6 +181,7 @@ def handle_student_courses_update(sender, instance, created, **kwargs):
         pass
     except Exception as e:
         raise ValueError(f"An error occurred while updating the courses data: {e}")
+    
 
 # when student has last course enrolled and he is deleted so he should not be enrolled 
 @receiver(pre_delete, sender=Students)
