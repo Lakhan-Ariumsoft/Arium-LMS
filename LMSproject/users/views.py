@@ -14,6 +14,8 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework_simplejwt.tokens import RefreshToken
+import re
+from rest_framework.exceptions import ValidationError
 
 class LoginAPIView(APIView):
     """
@@ -24,6 +26,7 @@ class LoginAPIView(APIView):
     def post(self, request):
         phone = request.data.get("phone")
         countryCode = request.data.get("countryCode")
+        # print("phone::::::::",phone)
 
         # password = request.data.get("password")
         # password = os.getenv("DEFAULT_USER_PASSWORD")
@@ -32,6 +35,10 @@ class LoginAPIView(APIView):
         if not phone:
             return Response({"detail": "Phone and password are required."}, status=status.HTTP_400_BAD_REQUEST)
 
+        # Validate phone number
+        if not re.fullmatch(r'^\d{10}$', phone):
+            return Response({"detail": "Phone number must be exactly 10 digits without spaces."})
+        
         try:
             # Get user by phone
             user = User.objects.get(phone=phone , countryCode = countryCode)
@@ -66,8 +73,6 @@ class LoginAPIView(APIView):
 
         except User.DoesNotExist:
             return Response({"detail": "User with this phone does not exist."}, status=status.HTTP_404_NOT_FOUND)
-
-
 
 
 

@@ -10,6 +10,14 @@ class Permission(models.Model):
     can_write_courses = models.BooleanField(default=False)
     can_read_meetings = models.BooleanField(default=False)
     can_write_meetings = models.BooleanField(default=False)
+    can_read_meetings = models.BooleanField(default=False)
+    can_create_meetings = models.BooleanField(default=False)
+    can_update_meetings = models.BooleanField(default=False)
+    can_delete_meetings = models.BooleanField(default=False)
+    can_read_students = models.BooleanField(default=False)
+    can_create_students = models.BooleanField(default=False)
+    can_update_students = models.BooleanField(default=False)
+    can_delete_students = models.BooleanField(default=False)
 
     def __str__(self):
         return self.name

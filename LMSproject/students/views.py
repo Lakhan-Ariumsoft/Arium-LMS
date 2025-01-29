@@ -16,6 +16,16 @@ from rest_framework import status
 from django.db.models import Q
 from django.core.paginator import Paginator, PageNotAnInteger, EmptyPage
 
+
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework.permissions import IsAuthenticated
+from rest_framework import status
+from django.db.models import Q
+from .models import Students, Enrollment
+from zoomApp.models import ZoomMeeting
+from courses.models import Courses
+
 def get_paginated_students(request, students_queryset):
     """
     Handles pagination for the students data and returns the paginated response.
@@ -101,6 +111,10 @@ class StudentsListCreateAPIView(APIView):
     View to handle fetching all students, creating a student, and search/filter students with proper exception handling.
     """
 
+    from django.db.models import Q
+    from rest_framework.response import Response
+    from rest_framework import status
+
     def get(self, request):
         try:
             # Get query parameters for filtering
@@ -117,18 +131,34 @@ class StudentsListCreateAPIView(APIView):
                 query |= Q(status__icontains=search_text)
 
             if search_course:
-                # Correct the lookup for Many-to-One relationship
                 query &= Q(enrollment__courses__courseName__icontains=search_course)
 
             if search_status:
                 query &= Q(status__icontains=search_status)
 
-            # Filter students based on the query and order by 'id' (or any other field)
+            # Filter students based on the query
             students_queryset = Students.objects.filter(query).distinct().order_by('id')
 
+            # Case 1: No students in the database
+            if not Students.objects.exists():
+                return Response({"message": "No records found in the database."}, status=status.HTTP_404_NOT_FOUND)
+
+            # Case 2: Query parameter provided but no matching records found
+            if search_text or search_course or search_status:
+                if not students_queryset.exists():
+                    query_params = []
+                    if search_text:
+                        query_params.append(f"'{search_text}'")
+                    if search_course:
+                        query_params.append(f"'{search_course}'")
+                    if search_status:
+                        query_params.append(f"'{search_status}'")
+
+                    query_msg = ", ".join(query_params)
+                    return Response({"message": f"No data found for {query_msg}."}, status=status.HTTP_404_NOT_FOUND)
+
+            # Case 3: Return paginated students
             return get_paginated_students(request, students_queryset)
-        except Students.DoesNotExist:
-            return Response({"message": "No students found matching the criteria."}, status=status.HTTP_404_NOT_FOUND)
 
         except Exception as e:
             # Log the error if needed
@@ -137,8 +167,6 @@ class StudentsListCreateAPIView(APIView):
                 {"message": f"An unexpected error occurred: {str(e)}"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
-
-
 
     def post(self, request):
         """
@@ -247,6 +275,9 @@ class StudentsDetailAPIView(APIView):
             if student_serializer.is_valid():
                 updated_student = student_serializer.save()  # Save the updated student
 
+                # Ensure the student is saved before handling the signals
+                updated_student.refresh_from_db()  # Refresh the student instance to fetch updated values
+
                 # Check if the student has an associated user, then update the User model
                 if hasattr(updated_student, 'user'):
                     user = updated_student.user
@@ -262,31 +293,27 @@ class StudentsDetailAPIView(APIView):
                 # Handle enrollment updates if any
                 if 'enrollments' in request.data:
                     for enrollment_data in request.data['enrollments']:
-                        # Check if this enrollment exists for the student
                         enrollment = Enrollment.objects.filter(student=updated_student, id=enrollment_data.get('id')).first()
                         if enrollment:
-                            # If enrollment exists, update it using the EnrollmentSerializer
                             enrollment_serializer = EnrollmentSerializer(enrollment, data=enrollment_data, partial=True)
                             if enrollment_serializer.is_valid():
-                                enrollment_serializer.save()  # Save the updated enrollment
+                                enrollment_serializer.save()
                             else:
                                 return Response({
                                     "error": "Enrollment update failed.",
                                     "details": enrollment_serializer.errors
                                 }, status=status.HTTP_400_BAD_REQUEST)
                         else:
-                            # If no existing enrollment, create a new one
                             enrollment_data['student'] = updated_student.id
                             new_enrollment_serializer = EnrollmentSerializer(data=enrollment_data)
                             if new_enrollment_serializer.is_valid():
-                                new_enrollment_serializer.save()  # Save the new enrollment
+                                new_enrollment_serializer.save()
                             else:
                                 return Response({
                                     "error": "Enrollment creation failed.",
                                     "details": new_enrollment_serializer.errors
                                 }, status=status.HTTP_400_BAD_REQUEST)
 
-                # Return success message indicating student data is updated
                 return Response({
                     "message": "Student successfully updated.",
                     "data": student_serializer.data
@@ -302,6 +329,7 @@ class StudentsDetailAPIView(APIView):
 
         except Exception as e:
             return Response({"error": f"An unexpected error occurred: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
 
 
         
@@ -354,3 +382,50 @@ class StudentsDetailAPIView(APIView):
                 {"message": f"An unexpected error occurred: {str(e)}"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
+
+
+
+class StudentDashboardAPIView(APIView):
+    permission_classes = [IsAuthenticated]  # Ensure only authenticated users can access
+
+    def get(self, request):
+        # Get the logged-in user
+        user = request.user
+
+        # Check if the user is a student
+        if user.role != "student":
+            return Response({"message": "Access denied. Only students can view this dashboard."}, status=status.HTTP_403_FORBIDDEN)
+
+        # Get the student instance
+        student = get_object_or_404(Students, email=user.email)  # Assuming email is the identifier
+
+        # Get all enrolled courses for the student
+        enrollments = Enrollment.objects.filter(student=student)
+
+        if not enrollments.exists():
+            return Response({"message": "No enrolled courses found for the student."}, status=status.HTTP_404_NOT_FOUND)
+
+        # Fetch course details along with associated Zoom meeting details
+        enrolled_courses_data = []
+        for enrollment in enrollments:
+            course = enrollment.courses
+
+            # Fetch Zoom meetings for the course
+            zoom_meetings = ZoomMeeting.objects.filter(course=course)
+            
+            course_data = {
+                "courseName": course.title,  # Assuming `title` is the course name field
+                "meetings": []
+            }
+
+            for meeting in zoom_meetings:
+                course_data["meetings"].append({
+                    "title": meeting.title,
+                    "recordingUrl": meeting.recording_url,
+                    "duration": meeting.duration,
+                    "updatedOn": meeting.updated_at.strftime("%Y-%m-%d %H:%M:%S")  # Format date/time
+                })
+
+            enrolled_courses_data.append(course_data)
+
+        return Response({"enrolledCourses": enrolled_courses_data}, status=status.HTTP_200_OK)
