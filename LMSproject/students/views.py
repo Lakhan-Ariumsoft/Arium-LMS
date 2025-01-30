@@ -63,7 +63,8 @@ def get_paginated_students(request, students_queryset):
                 enrolled_courses.append({
                     "course": enrollment.courses.courseName,
                     "start_date": enrollment.enrollmentDate.isoformat() if enrollment.enrollmentDate else "",
-                    "end_date": enrollment.expiryDate.isoformat() if enrollment.expiryDate else ""
+                    "end_date": enrollment.expiryDate.isoformat() if enrollment.expiryDate else "",
+                    "status" : enrollment.status
                 })
 
 
@@ -73,7 +74,7 @@ def get_paginated_students(request, students_queryset):
                 "countryCode": student.countryCode,
                 "phone": student.phone,
                 "email": student.email,
-                "status": student.status,
+                # "status": student.status,
                 "enrolled_courses": enrolled_courses,
             })
 
@@ -194,6 +195,26 @@ class StudentsListCreateAPIView(APIView):
 
             if search_course:
                 query &= Q(enrollment__courses__courseName__icontains=search_course) | Q(enrollment__courses__id=search_course) 
+                # try:
+                #     search_course = int(search_course)  # Convert to integer if it's an ID
+
+                #     # Debugging: Check if the course exists
+                #     course_exists = Courses.objects.filter(id=search_course).exists()
+                #     if not course_exists:
+                #         return Response({"status": "error", "message": "Course not found"}, status=404)
+
+                #     # Debugging: Check if any students are enrolled in this course
+                #     enrolled_students = Students.objects.filter(enrollments__course__id=search_course)
+                #     print(f"Enrolled students count: {enrolled_students.count()}")
+
+                #     # Apply the filter
+                #     query &= Q(enrollments__course__id=search_course)
+
+                # except ValueError:
+                #     print(f"Searching by name: {search_course}")
+                #     query &= Q(enrollments__course__title__icontains=search_course)
+
+
             if search_status:
                 query &= Q(status__icontains=search_status)
 
@@ -237,7 +258,7 @@ class StudentsListCreateAPIView(APIView):
             # Log the error if needed
             print(f"Error occurred while fetching students: {str(e)}")
             return Response(
-                {"message": f"An unexpected error occurred: {str(e)}"},
+                {"status":"error","message": f"An unexpected error occurred: {str(e)}"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
@@ -452,7 +473,7 @@ class StudentsDetailAPIView(APIView):
 
                 return Response(
                     {"success": True, "message": "Student deleted successfully."},
-                    status=status.HTTP_200_OK,  # ✅ Use 200 OK instead of 204
+                    status=status.HTTP_200_OK,  
                 )
 
         except Exception as e:

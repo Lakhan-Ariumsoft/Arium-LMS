@@ -56,6 +56,7 @@ class LoginAPIView(APIView):
                 csrf_token = get_token(request)
 
                 return Response({
+                    "status":True,
                     "message": "Login successful.",
                     "access_token": access_token,
                     "refresh_token": refresh_token,
@@ -65,14 +66,15 @@ class LoginAPIView(APIView):
                         "email": user.email,
                         "phone": user.phone,
                         "role": str(user.role),
-                        "name": user.first_name + user.last_name
+                        "name": user.firstname + user.lastname,
+                        "countryCode":user.countryCode
                     }
                 }, status=status.HTTP_200_OK)
             else:
-                return Response({"detail": "Invalid credentials."}, status=status.HTTP_401_UNAUTHORIZED)
+                return Response({"status":False,"message": "Invalid credentials."}, status=status.HTTP_401_UNAUTHORIZED)
 
         except User.DoesNotExist:
-            return Response({"detail": "User with this phone does not exist."}, status=status.HTTP_404_NOT_FOUND)
+            return Response({"status":False,"message": "User with this phone does not exist."}, status=status.HTTP_404_NOT_FOUND)
 
 
 
@@ -85,15 +87,16 @@ class LogoutAPIView(APIView):
     def post(self, request):
         refresh_token = request.data.get("refresh_token")
         if not refresh_token:
-            return Response({"detail": "Refresh token is required."}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"status":"error","Message": "Refresh token is required."}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
+
             # Blacklist the refresh token
             token = RefreshToken(refresh_token)
             token.blacklist()
             
             # Create a successful logout response
-            response = Response({"message": "Logout successful."}, status=status.HTTP_200_OK)
+            response = Response({"status":True,"message": "Logout successful."}, status=status.HTTP_200_OK)
             
             # Clear cookies
             response.delete_cookie("csrftoken")  # Clear the CSRF cookie
@@ -101,7 +104,7 @@ class LogoutAPIView(APIView):
             
             return response  # Return the response object
         except Exception:
-            return Response({"detail": "Invalid or expired refresh token."}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"Status":"error" ,"Message": "Invalid or expired refresh token."}, status=status.HTTP_400_BAD_REQUEST)
 
 
 

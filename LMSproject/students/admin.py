@@ -13,8 +13,8 @@ class EnrollmentInline(admin.TabularInline):
 
 @admin.register(Students)
 class StudentsAdmin(admin.ModelAdmin):
-    list_display = ('firstname', 'lastname', 'email', 'phone', 'batch', 'status', 'created_on', 'updated_on')
-    list_filter = ('batch', 'status', 'created_on')
+    list_display = ('firstname', 'lastname', 'email', 'phone', 'batch','created_on', 'updated_on')
+    list_filter = ('batch', 'created_on')
     search_fields = ('firstname', 'lastname', 'email', 'phone', 'batch')
     readonly_fields = ('created_on', 'updated_on')
     fieldsets = (
@@ -22,7 +22,7 @@ class StudentsAdmin(admin.ModelAdmin):
             'fields': ('firstname', 'lastname', 'email', 'countryCode', 'phone', 'dob', 'address'),
         }),
         ("Batch & Status", {
-            'fields': ('batch', 'status'),
+            'fields': ('batch',),
         }),
         ("Timestamps", {
             'fields': ('created_on', 'updated_on'),
@@ -33,7 +33,7 @@ class StudentsAdmin(admin.ModelAdmin):
 
 @admin.register(Enrollment)
 class EnrollmentAdmin(admin.ModelAdmin):
-    list_display = ('student', 'courses', 'enrollmentDate', 'expiryDate', 'created_at', 'updated_at')
+    list_display = ('student', 'courses', 'enrollmentDate', 'expiryDate','status' ,'created_at', 'updated_at')
     list_filter = ('enrollmentDate', 'expiryDate', 'created_at')
     search_fields = ('student__firstname', 'student__lastname', 'courses__courseName')
 

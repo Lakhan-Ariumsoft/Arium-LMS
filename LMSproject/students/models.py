@@ -23,7 +23,7 @@ class Students(models.Model):
     address = models.TextField(blank=True, null=True)
     batch = models.CharField(max_length=50, default="", blank=True)
     courses = models.ManyToManyField(Courses, through='Enrollment', related_name='students')
-    status = models.CharField(max_length=20,default=True )
+    # status = models.CharField(max_length=20,default=True )
     created_on = models.DateTimeField(auto_now_add=True)
     updated_on = models.DateTimeField(auto_now=True)
     
