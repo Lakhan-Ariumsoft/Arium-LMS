@@ -193,8 +193,7 @@ class StudentsListCreateAPIView(APIView):
                 query |= Q(status__icontains=search_text)
 
             if search_course:
-                query &= Q(enrollment__courses__courseName__icontains=search_course)
-
+                query &= Q(enrollment__courses__courseName__icontains=search_course) | Q(enrollment__courses__id=search_course) 
             if search_status:
                 query &= Q(status__icontains=search_status)
 
@@ -410,36 +409,39 @@ class StudentsDetailAPIView(APIView):
         except Exception as e:
             return Response({"error": f"An unexpected error occurred: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-
-
-        
     def delete(self, request, pk=None):
         try:
             with transaction.atomic():
-                # Fetch the student instance
-                student = get_object_or_404(Students, pk=pk)
+                # Fetch the student instance or return a structured response
+                try:
+                    student = Students.objects.get(pk=pk)
+                except Students.DoesNotExist:
+                    return Response(
+                        {"success": False, "message": "Student not found."},
+                        status=status.HTTP_404_NOT_FOUND
+                    )
 
-                # Check enrollments for the student
+                # Check if the student has enrollments
                 enrollments = Enrollment.objects.filter(student=student)
 
                 if not enrollments.exists():
                     return Response(
-                        {"message": "No enrollments found for the student."},
-                        status=status.HTTP_404_NOT_FOUND,
+                        {"success": False, "message": "No enrollments found for the student."},
+                        status=status.HTTP_404_NOT_FOUND
                     )
 
                 # Iterate through enrollments and update course student count
                 for enrollment in enrollments:
                     course = enrollment.courses
-                    course.studentsCount -= 1
-                    course.save(update_fields=["studentsCount"])
+                    if course.studentsCount > 0:  # Prevent negative count
+                        course.studentsCount -= 1
+                        course.save(update_fields=["studentsCount"])
 
                 # Delete enrollments for this student
                 enrollments.delete()
 
-                # Check if the student is enrolled in any other course
+                # Check if the student is still enrolled in any other course
                 if not checkStudentsEnrollment(student):
-                    # If a `user` field exists
                     if hasattr(student, "user"):
                         user = student.user
                         user.is_active = False
@@ -449,19 +451,65 @@ class StudentsDetailAPIView(APIView):
                     student.delete()
 
                 return Response(
-                    {"message": "Student deleted successfully."},
-                    status=status.HTTP_204_NO_CONTENT,
+                    {"success": True, "message": "Student deleted successfully."},
+                    status=status.HTTP_200_OK,  # ✅ Use 200 OK instead of 204
                 )
-        except Students.DoesNotExist:
-            return Response(
-                {"message": "Student not found."}, status=status.HTTP_404_NOT_FOUND
-            )
+
         except Exception as e:
-            # Catch all other exceptions and provide a structured error message
             return Response(
-                {"message": f"An unexpected error occurred: {str(e)}"},
+                {"success": False, "message": f"An unexpected error occurred: {str(e)}"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
+        
+    # def delete(self, request, pk=None):
+    #     try:
+    #         with transaction.atomic():
+    #             # Fetch the student instance
+    #             student = get_object_or_404(Students, pk=pk)
+
+    #             # Check enrollments for the student
+    #             enrollments = Enrollment.objects.filter(student=student)
+
+    #             if not enrollments.exists():
+    #                 return Response(
+    #                     {"message": "No enrollments found for the student."},
+    #                     status=status.HTTP_404_NOT_FOUND,
+    #                 )
+
+    #             # Iterate through enrollments and update course student count
+    #             for enrollment in enrollments:
+    #                 course = enrollment.courses
+    #                 course.studentsCount -= 1
+    #                 course.save(update_fields=["studentsCount"])
+
+    #             # Delete enrollments for this student
+    #             enrollments.delete()
+
+    #             # Check if the student is enrolled in any other course
+    #             if not checkStudentsEnrollment(student):
+    #                 # If a `user` field exists
+    #                 if hasattr(student, "user"):
+    #                     user = student.user
+    #                     user.is_active = False
+    #                     user.save(update_fields=["is_active"])
+
+    #                 # Delete the student record
+    #                 student.delete()
+
+    #             return Response(
+    #                 {"message": "Student deleted successfully."},
+    #                 status=status.HTTP_204_NO_CONTENT,
+    #             )
+    #     except Students.DoesNotExist:
+    #         return Response(
+    #             {"message": "Student not found."}, status=status.HTTP_404_NOT_FOUND
+    #         )
+    #     except Exception as e:
+    #         # Catch all other exceptions and provide a structured error message
+    #         return Response(
+    #             {"message": f"An unexpected error occurred: {str(e)}"},
+    #             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+    #         )
 
 
 
