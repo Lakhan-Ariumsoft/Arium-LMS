@@ -115,80 +115,19 @@ class StudentsListCreateAPIView(APIView):
     View to handle fetching all students, creating a student, and search/filter students with proper exception handling.
     """
 
-   
-
-    def get(self, request):
-        try:
-            # Extract query parameters
-            search_text = request.query_params.get('searchText', None)
-            search_course = request.query_params.get('searchCourse', None)
-            search_status = request.query_params.get('searchStatus', None)
-
-            # Extract pagination parameters (default values if not provided)
-            limit = int(request.query_params.get('limit', 10))  # Default to 10
-            page = int(request.query_params.get('page', 1))  # Default to 1
-
-            # Build the query filter
-            query = Q()
-            if search_text:
-                query |= Q(firstname__icontains=search_text) | Q(lastname__icontains=search_text)
-                query |= Q(email__icontains=search_text) | Q(phone__icontains=search_text)
-                query |= Q(status__icontains=search_text)
-
-            if search_course:
-                query &= Q(enrollment__courses__courseName__icontains=search_course)
-
-            if search_status:
-                query &= Q(status__icontains=search_status)
-
-            # Fetch and count total records
-            students_queryset = Students.objects.filter(query).distinct().order_by('id')
-            total_records = students_queryset.count()
-
-            # Calculate total pages (handling case where total is 0)
-            total_pages = ceil(total_records / limit) if total_records > 0 else 1
-
-            # Apply pagination
-            start_index = (page - 1) * limit
-            end_index = start_index + limit
-            paginated_students = students_queryset[start_index:end_index]
-
-            # Prepare response (ensuring format consistency)
-            response_data = {
-                "status": True,
-                "message": "Search records found." if paginated_students else "No search record found.",
-                "data":StudentsSerializer(paginated_students, many=True).data,  # Assuming `to_dict` exists
-                "total": total_records,
-                "limit": limit,
-                "page": page,
-                "pages": total_pages
-            }
-
-            return Response(response_data, status=status.HTTP_200_OK)
-
-        except Exception as e:
-            # Handle errors with a consistent response format
-            response_data = {
-                "status": False,
-                "message": f"An unexpected error occurred: {str(e)}",
-                "data": [],
-                "total": 0,
-                "limit": 10,
-                "page": 1,
-                "pages": 1
-            }
-            return Response(response_data, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
     # def get(self, request):
     #     try:
-    #         # Get query parameters for filtering
+    #         # Extract query parameters
     #         search_text = request.query_params.get('searchText', None)
     #         search_course = request.query_params.get('searchCourse', None)
     #         search_status = request.query_params.get('searchStatus', None)
 
-    #         # Build the Q object to filter the queryset
-    #         query = Q()
+    #         # Extract pagination parameters (default values if not provided)
+    #         limit = int(request.query_params.get('limit', 10))  # Default to 10
+    #         page = int(request.query_params.get('page', 1))  # Default to 1
 
+    #         # Build the query filter
+    #         query = Q()
     #         if search_text:
     #             query |= Q(firstname__icontains=search_text) | Q(lastname__icontains=search_text)
     #             query |= Q(email__icontains=search_text) | Q(phone__icontains=search_text)
@@ -200,37 +139,108 @@ class StudentsListCreateAPIView(APIView):
     #         if search_status:
     #             query &= Q(status__icontains=search_status)
 
-    #         # Filter students based on the query
+    #         # Fetch and count total records
     #         students_queryset = Students.objects.filter(query).distinct().order_by('id')
+    #         total_records = students_queryset.count()
 
-    #         # Case 1: No students in the database
-    #         if not Students.objects.exists():
-    #             return Response({"message": "No records found in the database."}, status=status.HTTP_404_NOT_FOUND)
+    #         # Calculate total pages (handling case where total is 0)
+    #         total_pages = ceil(total_records / limit) if total_records > 0 else 1
 
-    #         # Case 2: Query parameter provided but no matching records found
-    #         if search_text or search_course or search_status:
-    #             if not students_queryset.exists():
-    #                 # query_params = []
-    #                 # if search_text:
-    #                 #     query_params.append(f"'{search_text}'")
-    #                 # if search_course:
-    #                 #     query_params.append(f"'{search_course}'")
-    #                 # if search_status:
-    #                 #     query_params.append(f"'{search_status}'")
+    #         # Apply pagination
+    #         start_index = (page - 1) * limit
+    #         end_index = start_index + limit
+    #         paginated_students = students_queryset[start_index:end_index]
 
-    #                 # query_msg = ", ".join(query_params)
-    #                 return Response({"message": "No search data found"}, status=status.HTTP_404_NOT_FOUND)
+    #         # Prepare response (ensuring format consistency)
+    #         response_data = {
+    #             "status": True,
+    #             "message": "Search records found." if paginated_students else "No search record found.",
+    #             "data":StudentsSerializer(paginated_students, many=True).data,  # Assuming `to_dict` exists
+    #             "total": total_records,
+    #             "limit": limit,
+    #             "page": page,
+    #             "pages": total_pages
+    #         }
 
-    #         # Case 3: Return paginated students
-    #         return get_paginated_students(request, students_queryset)
+    #         return Response(response_data, status=status.HTTP_200_OK)
 
     #     except Exception as e:
-    #         # Log the error if needed
-    #         print(f"Error occurred while fetching students: {str(e)}")
-    #         return Response(
-    #             {"message": f"An unexpected error occurred: {str(e)}"},
-    #             status=status.HTTP_500_INTERNAL_SERVER_ERROR
-    #         )
+    #         # Handle errors with a consistent response format
+    #         response_data = {
+    #             "status": False,
+    #             "message": f"An unexpected error occurred: {str(e)}",
+    #             "data": [],
+    #             "total": 0,
+    #             "limit": 10,
+    #             "page": 1,
+    #             "pages": 1
+    #         }
+    #         return Response(response_data, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    def get(self, request):
+        try:
+            # Get query parameters for filtering
+            search_text = request.query_params.get('searchText', None)
+            search_course = request.query_params.get('searchCourse', None)
+            search_status = request.query_params.get('searchStatus', None)
+
+            # Build the Q object to filter the queryset
+            query = Q()
+
+            if search_text:
+                query |= Q(firstname__icontains=search_text) | Q(lastname__icontains=search_text)
+                query |= Q(email__icontains=search_text) | Q(phone__icontains=search_text)
+                query |= Q(status__icontains=search_text)
+
+            if search_course:
+                query &= Q(enrollment__courses__courseName__icontains=search_course)
+
+            if search_status:
+                query &= Q(status__icontains=search_status)
+
+            # Filter students based on the query
+            students_queryset = Students.objects.filter(query).distinct().order_by('id')
+
+            # Case 1: No students in the database
+            if not Students.objects.exists():
+            
+                # response_data = {
+                #     "status": True,
+                #     "message": "No records found in the database." if paginated_students else "No search record found.",
+                #     "data":StudentsSerializer(paginated_students, many=True).data,  # Assuming `to_dict` exists
+                #     "total": total_records,
+                #     "limit": limit,
+                #     "page": page,
+                #     "pages": total_pages
+                # }
+
+                return Response({"status" : True ,"message": "No records found in the database.","data" : [] , "total" : 0 , "page":1 , "pages":1}, status=status.HTTP_404_NOT_FOUND)
+            
+            # Case 2: Query parameter provided but no matching records found
+            if search_text or search_course or search_status:
+                if not students_queryset.exists():
+                    # query_params = []
+                    # if search_text:
+                    #     query_params.append(f"'{search_text}'")
+                    # if search_course:
+                    #     query_params.append(f"'{search_course}'")
+                    # if search_status:
+                    #     query_params.append(f"'{search_status}'")
+
+                    # query_msg = ", ".join(query_params)
+                    return Response({"status" : True ,"message": "No search data found","data": [] , "total" : 0 , "page":1 , "pages":1}, status=status.HTTP_404_NOT_FOUND)
+                
+
+            # Case 3: Return paginated students
+            return get_paginated_students(request, students_queryset)
+
+        except Exception as e:
+            # Log the error if needed
+            print(f"Error occurred while fetching students: {str(e)}")
+            return Response(
+                {"message": f"An unexpected error occurred: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
     def post(self, request):
         """
