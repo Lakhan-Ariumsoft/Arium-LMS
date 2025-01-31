@@ -66,7 +66,7 @@ class LoginAPIView(APIView):
                         "email": user.email,
                         "phone": user.phone,
                         "role": str(user.role),
-                        "name": user.firstname + user.lastname,
+                        "name": user.firstname +" " + user.lastname,
                         "countryCode":user.countryCode
                     }
                 }, status=status.HTTP_200_OK)

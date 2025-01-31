@@ -440,7 +440,8 @@ class ZoomMeetingListCreateAPIView(APIView):
                 {
                     "id": meeting.id,
                     "title": meeting.title,
-                    "courseName": meeting.course.name if meeting.course else "",
+                    "recordingUrl": meeting.recording_url,
+                    "courseName": meeting.course.courseName if meeting.course else "",
                     "duration": meeting.duration,
                     "updated_at": meeting.updated_at,
                     "status": "assigned" if meeting.course else "unassigned",
@@ -451,7 +452,7 @@ class ZoomMeetingListCreateAPIView(APIView):
             # Prepare the response
             response_data = {
                 "status": True,
-                "message": "Zoom meetings fetched.",
+                "message": "Recordings fetched Successfully.",
                 "data": meetings_data,
                 "total": total_meetings,
                 "limit": limit,
@@ -547,7 +548,7 @@ class ZoomMeetingListCreateAPIView(APIView):
                 # Return the successful response
                 return Response({
                     "status": True,
-                    "message": "Meeting created successfully.",
+                    "message": "Recording created successfully.",
                     "data": serializer.data
                 }, status=status.HTTP_201_CREATED)
 
@@ -559,7 +560,7 @@ class ZoomMeetingListCreateAPIView(APIView):
 
         except Exception as e:
             # Log the exception for debugging
-            print(f"Error creating Zoom meeting: {e}")
+            print(f"Error creating Recording: {e}")
 
             # Return the error response
             return Response({
@@ -580,10 +581,11 @@ class ZoomMeetingDetailAPIView(APIView):
 
             return JsonResponse({
                 "status": True,
-                "message": "Zoom meeting fetched.",
+                "message": "Recordings fetched.",
                 "data": {
                     "title": zoom_meeting.title,
                     "courseName": course_name,
+                    "recordingUrl":zoom_meeting.recording_url,
                     "duration": zoom_meeting.duration,
                     "updated_at": zoom_meeting.updated_at,
                     "status": status,
@@ -591,7 +593,7 @@ class ZoomMeetingDetailAPIView(APIView):
             })
 
         except ZoomMeeting.DoesNotExist:
-            return JsonResponse({"status": False, "message": "Zoom meeting not found."}, status=status.HTTP_404_NOT_FOUND)
+            return JsonResponse({"status": False, "message": "Recording not found."}, status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
             return JsonResponse({"status": False, "message": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
@@ -610,7 +612,7 @@ class ZoomMeetingDetailAPIView(APIView):
                 # Update videoCount for the associated course
                 if updated_meeting.course:
                     course = updated_meeting.course
-                    course.videoCount += 1
+                    course.videosCount += 1
                     course.save()
 
                 status = "assigned" if updated_meeting.course else "unassigned"
@@ -618,7 +620,7 @@ class ZoomMeetingDetailAPIView(APIView):
 
                 return JsonResponse({
                     "status": True,
-                    "message": "Zoom meeting updated successfully.",
+                    "message": "Recording updated successfully.",
                     "data": {
                         "title": updated_meeting.title,
                         "courseName": course_name,
@@ -636,7 +638,7 @@ class ZoomMeetingDetailAPIView(APIView):
                 }, status=status.HTTP_400_BAD_REQUEST)
 
         except ZoomMeeting.DoesNotExist:
-            return JsonResponse({"status": False, "message": "Zoom meeting not found."}, status=status.HTTP_404_NOT_FOUND)
+            return JsonResponse({"status": False, "message": "Recording not found."}, status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
             return JsonResponse({"status": False, "message": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
@@ -648,18 +650,18 @@ class ZoomMeetingDetailAPIView(APIView):
             # Decrease videoCount for the associated course
             if zoom_meeting.course:
                 course = zoom_meeting.course
-                course.videoCount -= 1
+                course.videosCount -= 1
                 course.save()
 
             zoom_meeting.delete()
 
             return JsonResponse({
                 "status": True,
-                "message": "Zoom meeting deleted successfully."
+                "message": "Recording deleted successfully."
             })
 
         except ZoomMeeting.DoesNotExist:
-            return JsonResponse({"status": False, "message": "Zoom meeting not found."}, status=status.HTTP_404_NOT_FOUND)
+            return JsonResponse({"status": False, "message": "Recording not found."}, status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
             return JsonResponse({"status": False, "message": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 

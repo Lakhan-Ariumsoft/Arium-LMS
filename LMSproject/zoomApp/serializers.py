@@ -23,7 +23,7 @@ class ZoomMeetingSerializer(serializers.ModelSerializer):
         zoom_meeting = ZoomMeeting.objects.create(**validated_data)
 
         if course:
-            course.videoCount += 1
+            course.videosCount += 1
             course.save()  # Save the updated videoCount for the course
 
         return zoom_meeting
@@ -37,11 +37,11 @@ class ZoomMeetingSerializer(serializers.ModelSerializer):
         # Only update videoCount if the course has changed
         if course != instance.course:
             if instance.course:
-                instance.course.videoCount -= 1
+                instance.course.videosCount -= 1
                 instance.course.save()
 
             if course:
-                course.videoCount += 1
+                course.videosCount += 1
                 course.save()
 
         return super().update(instance, validated_data)

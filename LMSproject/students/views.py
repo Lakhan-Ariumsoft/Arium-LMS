@@ -67,13 +67,16 @@ def get_paginated_students(request, students_queryset):
                     "status" : enrollment.status
                 })
 
+            print(f"ID: {student.id}, Name: {student.firstname} {student.lastname}, DOB: {student.dob}, Country Code: {student.countryCode}")
+
 
             student_data.append({
                 "_id": student.id,
                 "name": f"{student.firstname} {student.lastname}",
-                "countryCode": student.countryCode,
+                "countryCode":  student.countryCode if student.countryCode else "",
                 "phone": student.phone,
                 "email": student.email,
+                "dob" : student.dob.strftime("%Y-%m-%d") if student.dob else "",
                 # "status": student.status,
                 "enrolled_courses": enrolled_courses,
             })
@@ -191,28 +194,28 @@ class StudentsListCreateAPIView(APIView):
             if search_text:
                 query |= Q(firstname__icontains=search_text) | Q(lastname__icontains=search_text)
                 query |= Q(email__icontains=search_text) | Q(phone__icontains=search_text)
-                query |= Q(status__icontains=search_text)
+                # query |= Q(status__icontains=search_text)
 
             if search_course:
-                query &= Q(enrollment__courses__courseName__icontains=search_course) | Q(enrollment__courses__id=search_course) 
-                # try:
-                #     search_course = int(search_course)  # Convert to integer if it's an ID
+            #     query &= Q(enrollment__courses__courseName__icontains=search_course) | Q(enrollment__courses__id=search_course) 
+                try:
+                    search_course = int(search_course)  # Convert to integer if it's an ID
 
-                #     # Debugging: Check if the course exists
-                #     course_exists = Courses.objects.filter(id=search_course).exists()
-                #     if not course_exists:
-                #         return Response({"status": "error", "message": "Course not found"}, status=404)
+                    # Debugging: Check if the course exists
+                    course_exists = Courses.objects.filter(id=search_course).exists()
+                    if not course_exists:
+                        return Response({"status": "error", "message": "Course not found"}, status=404)
 
-                #     # Debugging: Check if any students are enrolled in this course
-                #     enrolled_students = Students.objects.filter(enrollments__course__id=search_course)
-                #     print(f"Enrolled students count: {enrolled_students.count()}")
+                    # Debugging: Check if any students are enrolled in this course
+                    enrolled_students = Students.objects.filter(enrollments__course__id=search_course)
+                    print(f"Enrolled students count: {enrolled_students.count()}")
 
-                #     # Apply the filter
-                #     query &= Q(enrollments__course__id=search_course)
+                    # Apply the filter
+                    query &= Q(enrollments__course__id=search_course)
 
-                # except ValueError:
-                #     print(f"Searching by name: {search_course}")
-                #     query &= Q(enrollments__course__title__icontains=search_course)
+                except ValueError:
+                    print(f"Searching by name: {search_course}")
+                    query &= Q(enrollments__course__title__icontains=search_course)
 
 
             if search_status:
@@ -532,9 +535,13 @@ class StudentsDetailAPIView(APIView):
     #             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
     #         )
 
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from rest_framework import status
+from django.shortcuts import get_object_or_404
+from django.db.models import Q
 
-
-class StudentDashboardAPIView(APIView):
+class DashboardAPIView(APIView):
     permission_classes = [IsAuthenticated]  # Ensure only authenticated users can access
 
     def get(self, request):
@@ -542,39 +549,72 @@ class StudentDashboardAPIView(APIView):
         user = request.user
 
         # Check if the user is a student
-        if user.role != "student":
-            return Response({"message": "Access denied. Only students can view this dashboard."}, status=status.HTTP_403_FORBIDDEN)
+        # if user.role == "student":
+        #     return Response({
+        #         "status": False,
+        #         "message": "Access denied. Only students can view this dashboard.",
+        #         "data": [],
+        #         "total": 0,
+        #         "limit": 10,
+        #         "page": 1,
+        #         "pages": 1
+        #     }, status=status.HTTP_403_FORBIDDEN)
 
         # Get the student instance
         student = get_object_or_404(Students, email=user.email)  # Assuming email is the identifier
 
         # Get all enrolled courses for the student
-        enrollments = Enrollment.objects.filter(student=student)
-
+        enrollments = Enrollment.objects.filter(student=student, status="active")  # Ensure only active enrollments
         if not enrollments.exists():
-            return Response({"message": "No enrolled courses found for the student."}, status=status.HTTP_404_NOT_FOUND)
+            return Response({
+                "status": True,
+                "message": "No enrolled courses found.",
+                "data": [],
+                "total": 0,
+                "limit": 10,
+                "page": 1,
+                "pages": 1
+            }, status=status.HTTP_200_OK)
 
-        # Fetch course details along with associated Zoom meeting details
+        # Fetch course details and Zoom meeting details for enrolled courses
         enrolled_courses_data = []
         for enrollment in enrollments:
             course = enrollment.courses
 
-            # Fetch Zoom meetings for the course
+            # Fetch Zoom meetings associated with this course
             zoom_meetings = ZoomMeeting.objects.filter(course=course)
-            
-            course_data = {
-                "courseName": course.title,  # Assuming `title` is the course name field
-                "meetings": []
-            }
 
             for meeting in zoom_meetings:
-                course_data["meetings"].append({
+                course_data = {
+                    "courseName": course.courseName,
                     "title": meeting.title,
                     "recordingUrl": meeting.recording_url,
                     "duration": meeting.duration,
-                    "updatedOn": meeting.updated_at.strftime("%Y-%m-%d %H:%M:%S")  # Format date/time
-                })
+                    "updatedAt": meeting.updated_at.strftime("%Y-%m-%d %H:%M:%S")  # Format date/time
+                }
+                enrolled_courses_data.append(course_data)
 
-            enrolled_courses_data.append(course_data)
+        # If no Zoom meetings found for the enrolled courses
+        if not enrolled_courses_data:
+            return Response({
+                "status": True,
+                "message": "No Zoom meetings found for the enrolled courses.",
+                "data": [],
+                "total": 0,
+                "limit": 10,
+                "page": 1,
+                "pages": 1
+            }, status=status.HTTP_200_OK)
 
-        return Response({"enrolledCourses": enrolled_courses_data}, status=status.HTTP_200_OK)
+        # Response data
+        response_data = {
+            "status": True,
+            "message": "Fetched successfully.",
+            "data": enrolled_courses_data,
+            "total": len(enrolled_courses_data),
+            "limit": 10,
+            "page": 1,
+            "pages": 1
+        }
+
+        return Response(response_data, status=status.HTTP_200_OK)
