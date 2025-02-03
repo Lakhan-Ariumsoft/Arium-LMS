@@ -4,13 +4,17 @@ from rest_framework import status
 from .models import Courses
 from .serializers import CourseSerializer
 from rest_framework.views import APIView
-from .models import Courses
+from .models import Courses 
 from users.models import User
 from .serializers import CourseSerializer
 from rest_framework.response import Response
 from rest_framework import status
 from datetime import datetime
 from django.db.models import Q
+from students.models import Enrollment
+from rest_framework.permissions import IsAuthenticated
+from users.permissions import IsModerator
+
 
 
 # def getPaginatedCourses(request, courses_queryset):
@@ -127,8 +131,17 @@ from django.db.models import Q
 
 class CourseView(APIView):
 
+    permission_classes = [IsAuthenticated, IsModerator] 
+
     def get(self, request, pk=None):
         try:
+            # print("sssss",request.user.role , type(request.user.role))
+            # if not request.user.role or request.user.role.name != "moderator":
+            #     return JsonResponse({"error": "Permission denied"}, status=403)
+            # if request.user.role != "moderator":
+            #     return JsonResponse({"error": "Permission denied"}, status=403)
+
+
             if pk:  # If pk is provided, fetch a single course
                 try:
                     course = Courses.objects.get(pk=pk)
@@ -289,22 +302,39 @@ class CourseView(APIView):
     def delete(self, request, pk=None):
         try:
             course = Courses.objects.get(pk=pk)
+            
+            # Check if any students are enrolled in this course
+            if Enrollment.objects.filter(courses=course).exists():
+                return Response({
+                    "status": False,
+                    "message": "Students are enrolled in this course. Cannot delete the course."
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+            course.delete()
+            return Response({
+                "status": True,
+                "message": "Course deleted successfully."
+            }, status=status.HTTP_200_OK)  # Ensure 200 OK is returned
+
         except Courses.DoesNotExist:
             return Response({
-                'status': False,
-                'message': 'Course not found.',
+                "status": False,
+                "message": "Course not found."
             }, status=status.HTTP_404_NOT_FOUND)
 
-        course.delete()
-        return Response({
-            'status': True,
-            'message': 'Course deleted successfully.'
-        }, status=status.HTTP_204_NO_CONTENT)
+        except Exception as e:
+            return Response({
+                "status": False,
+                "message": f"An unexpected error occurred: {str(e)}"
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 from django.http import JsonResponse
 
 class CourseDropdownListView(APIView):
+
+    permission_classes = [IsAuthenticated, IsModerator] 
+
     def get(self, request):
         # Fetch all courses and their ids
         courses = Courses.objects.all()
@@ -313,6 +343,9 @@ class CourseDropdownListView(APIView):
         
     
 class InstructorListView(APIView):
+
+    permission_classes = [IsAuthenticated, IsModerator] 
+
     def get(self, request):
         # Fetch instructors from Courses model
         instructors = Courses.objects.all()

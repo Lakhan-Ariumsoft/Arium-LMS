@@ -29,6 +29,10 @@ from .models import Students, Enrollment
 from zoomApp.models import ZoomMeeting
 from courses.models import Courses
 from .serializers import StudentsSerializer
+from users.permissions import IsModerator
+# from django.http import JsonResponse
+
+
 
 def get_paginated_students(request, students_queryset):
     """
@@ -119,70 +123,14 @@ class StudentsListCreateAPIView(APIView):
     View to handle fetching all students, creating a student, and search/filter students with proper exception handling.
     """
 
-    # def get(self, request):
-    #     try:
-    #         # Extract query parameters
-    #         search_text = request.query_params.get('searchText', None)
-    #         search_course = request.query_params.get('searchCourse', None)
-    #         search_status = request.query_params.get('searchStatus', None)
+    permission_classes = [IsAuthenticated, IsModerator] 
 
-    #         # Extract pagination parameters (default values if not provided)
-    #         limit = int(request.query_params.get('limit', 10))  # Default to 10
-    #         page = int(request.query_params.get('page', 1))  # Default to 1
-
-    #         # Build the query filter
-    #         query = Q()
-    #         if search_text:
-    #             query |= Q(firstname__icontains=search_text) | Q(lastname__icontains=search_text)
-    #             query |= Q(email__icontains=search_text) | Q(phone__icontains=search_text)
-    #             query |= Q(status__icontains=search_text)
-
-    #         if search_course:
-    #             query &= Q(enrollment__courses__courseName__icontains=search_course)
-
-    #         if search_status:
-    #             query &= Q(status__icontains=search_status)
-
-    #         # Fetch and count total records
-    #         students_queryset = Students.objects.filter(query).distinct().order_by('id')
-    #         total_records = students_queryset.count()
-
-    #         # Calculate total pages (handling case where total is 0)
-    #         total_pages = ceil(total_records / limit) if total_records > 0 else 1
-
-    #         # Apply pagination
-    #         start_index = (page - 1) * limit
-    #         end_index = start_index + limit
-    #         paginated_students = students_queryset[start_index:end_index]
-
-    #         # Prepare response (ensuring format consistency)
-    #         response_data = {
-    #             "status": True,
-    #             "message": "Search records found." if paginated_students else "No search record found.",
-    #             "data":StudentsSerializer(paginated_students, many=True).data,  # Assuming `to_dict` exists
-    #             "total": total_records,
-    #             "limit": limit,
-    #             "page": page,
-    #             "pages": total_pages
-    #         }
-
-    #         return Response(response_data, status=status.HTTP_200_OK)
-
-    #     except Exception as e:
-    #         # Handle errors with a consistent response format
-    #         response_data = {
-    #             "status": False,
-    #             "message": f"An unexpected error occurred: {str(e)}",
-    #             "data": [],
-    #             "total": 0,
-    #             "limit": 10,
-    #             "page": 1,
-    #             "pages": 1
-    #         }
-    #         return Response(response_data, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     def get(self, request):
         try:
+
+            # if not request.user.role or request.user.role.name != "moderator":
+            #     return JsonResponse({"error": "Permission denied"}, status=403)
             # Get query parameters for filtering
             search_text = request.query_params.get('searchText', None)
             search_course = request.query_params.get('searchCourse', None)
@@ -197,22 +145,9 @@ class StudentsListCreateAPIView(APIView):
                 # query |= Q(status__icontains=search_text)
 
             if search_course:
-            #     query &= Q(enrollment__courses__courseName__icontains=search_course) | Q(enrollment__courses__id=search_course) 
                 try:
-                    search_course = int(search_course)  # Convert to integer if it's an ID
-
-                    # Debugging: Check if the course exists
-                    course_exists = Courses.objects.filter(id=search_course).exists()
-                    if not course_exists:
-                        return Response({"status": "error", "message": "Course not found"}, status=404)
-
-                    # Debugging: Check if any students are enrolled in this course
-                    enrolled_students = Students.objects.filter(enrollments__course__id=search_course)
-                    print(f"Enrolled students count: {enrolled_students.count()}")
-
-                    # Apply the filter
-                    query &= Q(enrollments__course__id=search_course)
-
+                # query &= Q(enrollment__courses__courseName__icontains=search_course) 
+                    query &= Q(enrollment__courses__id=search_course) 
                 except ValueError:
                     print(f"Searching by name: {search_course}")
                     query &= Q(enrollments__course__title__icontains=search_course)
@@ -358,6 +293,8 @@ class StudentsDetailAPIView(APIView):
     View to handle fetching, updating, and deleting a specific student.
     """
 
+    permission_classes = [IsAuthenticated, IsModerator] 
+
     def get(self, request, pk=None):
         try:
             student = get_object_or_404(Students, pk=pk)
@@ -436,7 +373,7 @@ class StudentsDetailAPIView(APIView):
     def delete(self, request, pk=None):
         try:
             with transaction.atomic():
-                # Fetch the student instance or return a structured response
+                # Fetch the student instance
                 try:
                     student = Students.objects.get(pk=pk)
                 except Students.DoesNotExist:
@@ -445,13 +382,19 @@ class StudentsDetailAPIView(APIView):
                         status=status.HTTP_404_NOT_FOUND
                     )
 
-                # Check if the student has enrollments
+                # Fetch all enrollments of the student
                 enrollments = Enrollment.objects.filter(student=student)
 
+                # If student has no enrollments, deactivate the user and delete student record
                 if not enrollments.exists():
+                    if hasattr(student, "user") and student.user:
+                        student.user.is_active = False
+                        student.user.save(update_fields=["is_active"])
+
+                    student.delete()
                     return Response(
-                        {"success": False, "message": "No enrollments found for the student."},
-                        status=status.HTTP_404_NOT_FOUND
+                        {"success": True, "message": "Student deleted as no enrollments were found."},
+                        status=status.HTTP_200_OK
                     )
 
                 # Iterate through enrollments and update course student count
@@ -461,29 +404,28 @@ class StudentsDetailAPIView(APIView):
                         course.studentsCount -= 1
                         course.save(update_fields=["studentsCount"])
 
-                # Delete enrollments for this student
+                # Delete enrollments
                 enrollments.delete()
 
-                # Check if the student is still enrolled in any other course
-                if not checkStudentsEnrollment(student):
-                    if hasattr(student, "user"):
-                        user = student.user
-                        user.is_active = False
-                        user.save(update_fields=["is_active"])
+                # Double-check if student is still enrolled anywhere
+                if not Enrollment.objects.filter(student=student).exists():
+                    if hasattr(student, "user") and student.user:
+                        student.user.is_active = False
+                        student.user.save(update_fields=["is_active"])
 
-                    # Delete the student record
                     student.delete()
 
                 return Response(
                     {"success": True, "message": "Student deleted successfully."},
-                    status=status.HTTP_200_OK,  
+                    status=status.HTTP_200_OK
                 )
 
         except Exception as e:
             return Response(
                 {"success": False, "message": f"An unexpected error occurred: {str(e)}"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+
         
     # def delete(self, request, pk=None):
     #     try:
@@ -598,7 +540,7 @@ class DashboardAPIView(APIView):
         if not enrolled_courses_data:
             return Response({
                 "status": True,
-                "message": "No Zoom meetings found for the enrolled courses.",
+                "message": "No Recordings found for the enrolled courses.",
                 "data": [],
                 "total": 0,
                 "limit": 10,
