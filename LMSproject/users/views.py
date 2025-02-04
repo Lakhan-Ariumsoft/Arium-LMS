@@ -55,35 +55,35 @@ class LoginAPIView(APIView):
 
 
             # Check password
-            if user.check_password(password):
-                print("I am here 49 inside login")
-                # Log the user in (optional)
-                login(request, user)
+            # if user.check_password(password):
+            print("I am here 49 inside login")
+            # Log the user in (optional)
+            login(request, user)
 
-                # Generate JWT tokens
-                refresh = RefreshToken.for_user(user)
-                access_token = str(refresh.access_token)
-                refresh_token = str(refresh)
+            # Generate JWT tokens
+            refresh = RefreshToken.for_user(user)
+            access_token = str(refresh.access_token)
+            refresh_token = str(refresh)
 
-                csrf_token = get_token(request)
+            csrf_token = get_token(request)
 
-                return Response({
-                    "status":True,
-                    "message": "Login successful.",
-                    "access_token": access_token,
-                    "refresh_token": refresh_token,
-                    "csrf_token": csrf_token,
-                    "user": {
-                        "id": user.id,
-                        "email": user.email,
-                        "phone": user.phone,
-                        "role": str(user.role),
-                        "name": user.firstname +" " + user.lastname,
-                        "countryCode":user.countryCode
-                    }
-                }, status=status.HTTP_200_OK)
-            else:
-                return Response({"status":False,"message": "Invalid credentials."}, status=status.HTTP_401_UNAUTHORIZED)
+            return Response({
+                "status":True,
+                "message": "Login successful.",
+                "access_token": access_token,
+                "refresh_token": refresh_token,
+                "csrf_token": csrf_token,
+                "user": {
+                    "id": user.id,
+                    "email": user.email,
+                    "phone": user.phone,
+                    "role": str(user.role),
+                    "name": user.firstname +" " + user.lastname,
+                    "countryCode":user.countryCode
+                }
+            }, status=status.HTTP_200_OK)
+            # else:
+                # return Response({"status":False,"message": "Invalid credentials."}, status=status.HTTP_401_UNAUTHORIZED)
 
         except User.DoesNotExist:
             return Response({"status":False,"message": "User with this phone does not exist."}, status=status.HTTP_404_NOT_FOUND)
