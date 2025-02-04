@@ -44,8 +44,12 @@ class LoginAPIView(APIView):
         try:
             print("Inside login 43")
             # Get user by phone
-            user = User.objects.get(phone=phone , countryCode = countryCode)
-            print("here 48" , user)
+            try:
+                user = User.objects.get(phone=phone, countryCode=countryCode)
+            except User.DoesNotExist:
+                return Response({"status": False, "message": "User not found."}, status=status.HTTP_404_NOT_FOUND)
+
+
             # Check password
             if user.check_password(password):
                 print("I am here 49 inside login")
