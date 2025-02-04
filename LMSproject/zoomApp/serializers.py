@@ -1,47 +1,51 @@
 from rest_framework import serializers
-from .models import ZoomMeeting
+from .models import Recordings
 from courses.models import Courses
 
-class ZoomMeetingSerializer(serializers.ModelSerializer):
-    courseName = serializers.CharField(source='course.name', read_only=True)  # Add course name to the response if course is assigned
-    status = serializers.SerializerMethodField()  # Add a 'status' field to indicate whether the meeting is assigned or unassigned
+class RecordingsSerializer(serializers.ModelSerializer):
+    course_ids = serializers.ListField(child=serializers.IntegerField(), write_only=True, required=False)
+    course_names = serializers.SerializerMethodField()
 
     class Meta:
-        model = ZoomMeeting
-        fields = ['id', 'title', 'meeting_id', 'duration', 'recording_url', 'course', 'courseName', 'status', 'created_at', 'updated_at']
+        model = Recordings
+        fields = ['id', 'title', 'meeting_id', 'duration', 'recording_url', 'created_at', 'updated_at', 'course_ids', 'course_names' , 'course']
 
-    def get_status(self, obj):
-        # Determine the status (assigned or unassigned)
-        return 'assigned' if obj.course else 'unassigned'
+    def get_course_names(self, obj):
+        return obj.course.courseName if obj.course else None  # Directly access courseName
+
 
     def create(self, validated_data):
-        """
-        Override the create method to ensure that the course's videoCount is incremented
-        when a new ZoomMeeting is created and assigned to a course.
-        """
-        course = validated_data.get('course')
-        zoom_meeting = ZoomMeeting.objects.create(**validated_data)
+        course_ids = validated_data.pop('course_ids', [])
+        recording = Recordings.objects.create(**validated_data)
 
-        if course:
-            course.videosCount += 1
-            course.save()  # Save the updated videoCount for the course
+        if course_ids:
+            courses = Courses.objects.filter(id__in=course_ids)
+            recording.course.set(courses)  # Use `.set()` for ManyToManyField
+        else:
+            recording.status = "unassigned"  # Set status if no course assigned
+        
+        recording.save()
+        return recording
 
-        return zoom_meeting
+
 
     def update(self, instance, validated_data):
-        """
-        Override the update method to ensure that the course's videoCount is updated
-        correctly when a ZoomMeeting is updated.
-        """
-        course = validated_data.get('course', instance.course)
-        # Only update videoCount if the course has changed
-        if course != instance.course:
-            if instance.course:
-                instance.course.videosCount -= 1
-                instance.course.save()
+        course_ids = validated_data.pop('course_ids', [])
+        
+        old_course = instance.course
+        new_course = Courses.objects.filter(id__in=course_ids).first() if course_ids else None
 
-            if course:
-                course.videosCount += 1
-                course.save()
+        if old_course and old_course != new_course:
+            old_course.videosCount = max(0, old_course.videosCount - 1)
+            old_course.save()
 
-        return super().update(instance, validated_data)
+        if new_course and new_course != old_course:
+            new_course.videosCount += 1
+            new_course.save()
+            instance.course = new_course
+        
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        
+        instance.save()
+        return instance

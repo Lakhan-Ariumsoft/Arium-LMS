@@ -31,6 +31,19 @@ from django.db.models import Q
 from datetime import datetime
 from rest_framework import status
 
+from zoomApp.models import Recordings  # Import the ZoomMeeting model
+from courses.models import Courses  # Import the Courses model
+from django.db import IntegrityError
+
+
+from django.http import JsonResponse
+from django.core.paginator import Paginator
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import status
+from .models import Recordings
+from courses.models import Courses
+from .serializers import RecordingsSerializer
 
 load_dotenv()
 ZOOM_CLIENT_ID = os.getenv("ZOOM_CLIENT_ID")
@@ -251,9 +264,7 @@ def zoom_webhook(request):
 
     return JsonResponse({"error": "Invalid method"}, status=400)
 
-from zoomApp.models import ZoomMeeting  # Import the ZoomMeeting model
-from courses.models import Courses  # Import the Courses model
-from django.db import IntegrityError
+
 
 def helperFunction(meeting_id):
     """Process and upload recordings for a given meeting ID."""
@@ -328,7 +339,7 @@ def helperFunction(meeting_id):
                         try:
                             # Find or create the course based on the course name extracted from the meeting topic
                             course = Courses.objects.filter(title=course_name).first()
-                            ZoomMeeting.objects.create(
+                            Recordings.objects.create(
                                 course=course,
                                 title=meeting_topic,
                                 meeting_id=meeting_id,
@@ -346,59 +357,32 @@ def helperFunction(meeting_id):
         print(f"Critical error in upload_recordings for meeting ID '{meeting_id}': {e}")
 
 
-        
-from django.shortcuts import get_object_or_404
-from django.http import JsonResponse
-from rest_framework import status
-from rest_framework.views import APIView
-from rest_framework.response import Response
-from .models import ZoomMeeting
-from zoomApp.serializers import ZoomMeetingSerializer
-from courses.models import Courses
-from datetime import datetime
 
-class ZoomMeetingListCreateAPIView(APIView):
-    """
-    Handle GET and POST requests for Zoom meetings.
-    """
-
+class RecordingsView(APIView):
     
-
     def get(self, request):
-        try:
-            # Fetching filter parameters from the request
-            unassignedVideos = request.GET.get('unassignedVideos', None)
-            dataRange = request.GET.get('dataRange', None)
-            searchCourse = request.GET.get('searchCourse', None)
-            searchText = request.GET.get('searchText', None)
-
-            # Filtering meetings based on parameters
-            zoom_meetings = ZoomMeeting.objects.all()
-
-            # Filtering by unassignedVideos (course is null)
-            if unassignedVideos:
-                zoom_meetings = zoom_meetings.filter(course__isnull=True)
-
-            # Filtering by dataRange (assuming format "YYYY-MM-DD:YYYY-MM-DD")
-            if dataRange:
+        unassigned_videos = request.GET.get('specialClasses', None)
+        dateRange = request.GET.get('dateRange', None)
+        searchCourse = request.GET.get('searchCourse', None)
+        search_text = request.GET.get('searchText', None)
+        page = int(request.GET.get('page', 1))
+        limit = int(request.GET.get('limit', 10))
+        
+        queryset = Recordings.objects.all()
+        
+        if unassigned_videos:
+            queryset = queryset.filter(course__isnull=True)
+        
+        if searchCourse:
                 try:
-                    start_date, end_date = dataRange.split(":")
-                    start_date = datetime.strptime(start_date, "%Y-%m-%d")
-                    end_date = datetime.strptime(end_date, "%Y-%m-%d")
-                    end_date = end_date.replace(hour=23, minute=59, second=59)  # Set end time to EOD
-
-                    zoom_meetings = zoom_meetings.filter(created_at__range=[start_date, end_date])
-                except ValueError:
-                    return JsonResponse({
-                        "status": False,
-                        "message": "Invalid date range format. Use 'YYYY-MM-DD:YYYY-MM-DD'."
-                    }, status=status.HTTP_400_BAD_REQUEST)
-
-            # Filtering by course (search by course name)
-            if searchCourse:
-                try:
-                    course = Courses.objects.get(name__icontains=searchCourse)  # Assuming search by name
-                    zoom_meetings = zoom_meetings.filter(course=course)
+                    # Try to filter by courseId first (if it looks like an ID)
+                    if searchCourse.isdigit():
+                        course = Courses.objects.get(id=searchCourse)
+                    else:
+                        # Otherwise, filter by courseName
+                        course = Courses.objects.get(name__icontains=searchCourse)
+                    
+                    queryset = queryset.filter(course=course)
                 except Courses.DoesNotExist:
                     return JsonResponse({
                         "status": False,
@@ -410,261 +394,129 @@ class ZoomMeetingListCreateAPIView(APIView):
                         "pages": 1
                     }, status=status.HTTP_400_BAD_REQUEST)
 
-            # Filtering by searchText (for title or meeting_id)
-            if searchText:
-                zoom_meetings = zoom_meetings.filter(Q(title__icontains=searchText) | Q(meeting_id__icontains=searchText))
+        
+        if search_text:
+            queryset = queryset.filter(title__icontains=search_text)
+        
+        if dateRange:
+            try:
+                start_date_str, end_date_str = dateRange.split(":")
+                start_date = datetime.strptime(start_date_str.strip(), "%Y-%m-%d")
+                end_date = datetime.strptime(end_date_str.strip(), "%Y-%m-%d")
+                end_date = end_date.replace(hour=23, minute=59, second=59)  # Set end time to EOD
 
-            # If no results found, return an empty response in the same format
-            total_meetings = zoom_meetings.count()
-            if total_meetings == 0:
+                queryset = queryset.filter(updated_at__range=(start_date, end_date))
+            except ValueError:
                 return JsonResponse({
                     "status": False,
-                    "message": "No Search data found.",
-                    "data": [],
-                    "total": 0,
-                    "limit": int(request.GET.get('limit', 10)),
-                    "page": int(request.GET.get('page', 1)),
-                    "pages": 1
-                }, status=status.HTTP_404_NOT_FOUND)
+                    "message": "Invalid date range format. Use 'YYYY-MM-DD:YYYY-MM-DD'."
+                }, status=status.HTTP_400_BAD_REQUEST)
 
-            # Pagination logic without Paginator
-            page = int(request.GET.get('page', 1))
-            limit = int(request.GET.get('limit', 10))
-            start_index = (page - 1) * limit
-            end_index = start_index + limit
-
-            zoom_meetings = zoom_meetings[start_index:end_index]
-
-            # Prepare the data with added 'status' and 'courseName' fields
-            meetings_data = [
-                {
-                    "id": meeting.id,
-                    "title": meeting.title,
-                    "recordingUrl": meeting.recording_url,
-                    "courseName": meeting.course.courseName if meeting.course else "",
-                    "duration": meeting.duration,
-                    "updated_at": meeting.updated_at,
-                    "status": "assigned" if meeting.course else "unassigned",
-                }
-                for meeting in zoom_meetings
-            ]
-
-            # Prepare the response
-            response_data = {
-                "status": True,
-                "message": "Recordings fetched Successfully.",
-                "data": meetings_data,
-                "total": total_meetings,
+        
+        paginator = Paginator(queryset, limit)
+        paged_data = paginator.get_page(page)
+        
+        if not paged_data:
+            return JsonResponse({
+                "status": False,
+                "message": "No Search data found.",
+                "data": [],
+                "total": 0,
                 "limit": limit,
                 "page": page,
-                "pages": (total_meetings // limit) + (1 if total_meetings % limit > 0 else 0)
-            }
-
-            return JsonResponse(response_data, status=status.HTTP_200_OK)
-
-        except Exception as e:
-            return JsonResponse({"status": False, "message": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-
-    # def get(self, request):
-    #     try:
-    #         # Fetching filter parameters from the request
-    #         unassignedVideos = request.GET.get('unassignedVideos', None)
-    #         dataRange = request.GET.get('dataRange', None)
-    #         searchCourse = request.GET.get('searchCourse', None)
-    #         searchText = request.GET.get('searchText', None)
-
-    #         # Filtering meetings based on parameters
-    #         zoom_meetings = ZoomMeeting.objects.all()
-
-    #         # Filtering by unassignedVideos (course is null)
-    #         if unassignedVideos:
-    #             zoom_meetings = zoom_meetings.filter(course__isnull=True)
-
-    #         # Filtering by dataRange (assuming dataRange is a date range e.g., "start_date:end_date")
-    #         if dataRange:
-    #             start_date, end_date = dataRange.split(":")
-    #             zoom_meetings = zoom_meetings.filter(created_at__range=[start_date, end_date])
-
-    #         # Filtering by course (search by course name or course ID)
-    #         if searchCourse:
-    #             try:
-    #                 course = Courses.objects.get(name__icontains=searchCourse)  # Assuming search by name
-    #                 zoom_meetings = zoom_meetings.filter(course=course)
-    #             except Courses.DoesNotExist:
-    #                 return JsonResponse({"status": False, "message": "Course not found."}, status=status.HTTP_400_BAD_REQUEST)
-
-    #         # Filtering by searchText (for title or meeting_id)
-    #         if searchText:
-    #             zoom_meetings = zoom_meetings.filter(title__icontains=searchText) | zoom_meetings.filter(meeting_id__icontains=searchText)
-
-    #         # Pagination logic
-    #         page = int(request.GET.get('page', 1))
-    #         limit = int(request.GET.get('limit', 10))
-    #         start_index = (page - 1) * limit
-    #         end_index = start_index + limit
-    #         zoom_meetings = zoom_meetings[start_index:end_index]
-
-    #         # Prepare the data with added 'status' and 'courseName' fields
-    #         meetings_data = []
-    #         for meeting in zoom_meetings:
-    #             status = "assigned" if meeting.course else "unassigned"
-    #             course_name = meeting.course.name if meeting.course else ""
-    #             meetings_data.append({
-    #                 "id":meeting.id,
-    #                 "title": meeting.title,
-    #                 "courseName": course_name,
-    #                 "duration": meeting.duration,
-    #                 "updated_at": meeting.updated_at,
-    #                 "status": status,
-    #             })
-
-    #         # Serialize the data (optional, if using serializer for other fields)
-    #         total = ZoomMeeting.objects.count()
-
-    #         # Prepare the response
-    #         response_data = {
-    #             "status": True,
-    #             "message": "Zoom meetings fetched.",
-    #             "data": meetings_data,
-    #             "total": total,
-    #             "limit": limit,
-    #             "page": page,
-    #             "pages": (total // limit) + (1 if total % limit > 0 else 0)
-    #         }
-
-    #         return JsonResponse(response_data)
-
-    #     except Exception as e:
-    #         return JsonResponse({"status": False, "message": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-    def post(self, request, *args, **kwargs):
+                "pages": 1
+            }, status=status.HTTP_404_NOT_FOUND)
+        
+        serializer = RecordingsSerializer(paged_data, many=True)
+        return JsonResponse({
+            "status": True,
+            "message": "Recordings fetched successfully.",
+            "data": serializer.data,
+            "total": paginator.count,
+            "limit": limit,
+            "page": page,
+            "pages": paginator.num_pages
+        }, status=status.HTTP_200_OK)
+    
+    def post(self, request):
         try:
-            # Create a new Zoom meeting
-            serializer = ZoomMeetingSerializer(data=request.data)
+            serializer = RecordingsSerializer(data=request.data)
             if serializer.is_valid():
-                zoom_meeting = serializer.save()
-
-                # Return the successful response
+                recording = serializer.save()  # No need to update `videosCount` here
                 return Response({
                     "status": True,
                     "message": "Recording created successfully.",
                     "data": serializer.data
                 }, status=status.HTTP_201_CREATED)
-
+            
             return Response({
                 "status": False,
                 "message": "Invalid data.",
                 "errors": serializer.errors
             }, status=status.HTTP_400_BAD_REQUEST)
-
-        except Exception as e:
-            # Log the exception for debugging
-            print(f"Error creating Recording: {e}")
-
-            # Return the error response
+        
+        except ValueError as ve:
             return Response({
                 "status": False,
-                "message": str(e)  # This will give you a string message as the error
+                "message": "Value error occurred.",
+                "error": str(ve)
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        except TypeError as te:
+            return Response({
+                "status": False,
+                "message": "Type error occurred.",
+                "error": str(te)
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        except Exception as e:
+            return Response({
+                "status": False,
+                "message": "An unexpected error occurred.",
+                "error": str(e)
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-
-class ZoomMeetingDetailAPIView(APIView):
-    """
-    Handle GET, PUT, and DELETE requests for a single Zoom meeting.
-    """
-    def get(self, request, pk):
-        try:
-            zoom_meeting = get_object_or_404(ZoomMeeting, pk=pk)
-            status = "assigned" if zoom_meeting.course else "unassigned"
-            course_name = zoom_meeting.course.name if zoom_meeting.course else ""
-
-            return JsonResponse({
-                "status": True,
-                "message": "Recordings fetched.",
-                "data": {
-                    "title": zoom_meeting.title,
-                    "courseName": course_name,
-                    "recordingUrl":zoom_meeting.recording_url,
-                    "duration": zoom_meeting.duration,
-                    "updated_at": zoom_meeting.updated_at,
-                    "status": status,
-                }
-            })
-
-        except ZoomMeeting.DoesNotExist:
-            return JsonResponse({"status": False, "message": "Recording not found."}, status=status.HTTP_404_NOT_FOUND)
-        except Exception as e:
-            return JsonResponse({"status": False, "message": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
+    
     def put(self, request, pk):
         try:
-            # Fetch the zoom meeting to update
-            zoom_meeting = get_object_or_404(ZoomMeeting, pk=pk)
-
-            # Deserialize the incoming data
-            serializer = ZoomMeetingSerializer(zoom_meeting, data=request.data, partial=True)
-
+            recording = Recordings.objects.get(id=pk)
+            old_courses = list(recording.course.all()) if recording.course else []
+            serializer = RecordingsSerializer(recording, data=request.data, partial=True)
+            
             if serializer.is_valid():
-                # Save the updated ZoomMeeting
-                updated_meeting = serializer.save()
-
-                # Update videoCount for the associated course
-                if updated_meeting.course:
-                    course = updated_meeting.course
+                updated_recording = serializer.save()
+                
+                new_courses = list(updated_recording.course.all()) if updated_recording.course else []
+                removed_courses = set(old_courses) - set(new_courses)
+                added_courses = set(new_courses) - set(old_courses)
+                
+                for course in removed_courses:
+                    course.videosCount -= 1
+                    course.save()
+                
+                for course in added_courses:
                     course.videosCount += 1
                     course.save()
-
-                status = "assigned" if updated_meeting.course else "unassigned"
-                course_name = updated_meeting.course.name if updated_meeting.course else ""
-
-                return JsonResponse({
+                
+                return Response({
                     "status": True,
                     "message": "Recording updated successfully.",
-                    "data": {
-                        "title": updated_meeting.title,
-                        "courseName": course_name,
-                        "duration": updated_meeting.duration,
-                        "updated_at": updated_meeting.updated_at,
-                        "status": status,
-                    }
-                })
-
-            else:
-                return JsonResponse({
-                    "status": False,
-                    "message": "Validation failed.",
-                    "data": serializer.errors
-                }, status=status.HTTP_400_BAD_REQUEST)
-
-        except ZoomMeeting.DoesNotExist:
-            return JsonResponse({"status": False, "message": "Recording not found."}, status=status.HTTP_404_NOT_FOUND)
-        except Exception as e:
-            return JsonResponse({"status": False, "message": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
+                    "data": serializer.data
+                }, status=status.HTTP_200_OK)
+            return Response({"status": False, "message": "Invalid data.", "errors": serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
+        except Recordings.DoesNotExist:
+            return Response({"status": False, "message": "Recording not found."}, status=status.HTTP_404_NOT_FOUND)
+    
     def delete(self, request, pk):
         try:
-            # Fetch the zoom meeting to delete
-            zoom_meeting = get_object_or_404(ZoomMeeting, pk=pk)
-
-            # Decrease videoCount for the associated course
-            if zoom_meeting.course:
-                course = zoom_meeting.course
-                course.videosCount -= 1
-                course.save()
-
-            zoom_meeting.delete()
-
-            return JsonResponse({
-                "status": True,
-                "message": "Recording deleted successfully."
-            })
-
-        except ZoomMeeting.DoesNotExist:
-            return JsonResponse({"status": False, "message": "Recording not found."}, status=status.HTTP_404_NOT_FOUND)
-        except Exception as e:
-            return JsonResponse({"status": False, "message": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
+            recording = Recordings.objects.get(id=pk)
+            if recording.course:
+                recording.course.videosCount -= 1
+                recording.course.save()
+            recording.delete()
+            return Response({"status": True, "message": "Recording deleted successfully."}, status=status.HTTP_204_NO_CONTENT)
+        except Recordings.DoesNotExist:
+            return Response({"status": False, "message": "Recording not found."}, status=status.HTTP_404_NOT_FOUND)
 
 
 # from django.http import JsonResponse

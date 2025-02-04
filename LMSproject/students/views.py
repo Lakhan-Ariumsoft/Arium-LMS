@@ -26,7 +26,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework import status
 from django.db.models import Q
 from .models import Students, Enrollment
-from zoomApp.models import ZoomMeeting
+from zoomApp.models import Recordings
 from courses.models import Courses
 from .serializers import StudentsSerializer
 from users.permissions import IsModerator
@@ -524,7 +524,7 @@ class DashboardAPIView(APIView):
             course = enrollment.courses
 
             # Fetch Zoom meetings associated with this course
-            zoom_meetings = ZoomMeeting.objects.filter(course=course)
+            zoom_meetings = Recordings.objects.filter(course=course)
 
             for meeting in zoom_meetings:
                 course_data = {
