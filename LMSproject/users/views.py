@@ -16,6 +16,10 @@ from rest_framework import status
 from rest_framework_simplejwt.tokens import RefreshToken
 import re
 from rest_framework.exceptions import ValidationError
+from django.contrib.auth.hashers import make_password
+
+
+
 
 import traceback
 
@@ -32,7 +36,7 @@ class LoginAPIView(APIView):
 
         # password = request.data.get("password")
         # password = os.getenv("DEFAULT_USER_PASSWORD")
-        password = "Pass@1234"
+        password = make_password("Pass@1234")
 
         if not phone:
             return Response({"detail": "Phone number is required."}, status=status.HTTP_400_BAD_REQUEST)
