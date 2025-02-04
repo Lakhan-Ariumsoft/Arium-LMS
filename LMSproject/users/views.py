@@ -45,7 +45,7 @@ class LoginAPIView(APIView):
             print("Inside login 43")
             # Get user by phone
             user = User.objects.get(phone=phone , countryCode = countryCode)
-
+            print("here 48" , user)
             # Check password
             if user.check_password(password):
                 print("I am here 49 inside login")
