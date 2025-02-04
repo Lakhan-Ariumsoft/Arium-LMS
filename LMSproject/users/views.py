@@ -17,6 +17,8 @@ from rest_framework_simplejwt.tokens import RefreshToken
 import re
 from rest_framework.exceptions import ValidationError
 
+import traceback
+
 class LoginAPIView(APIView):
     """
     API View for user login using phone and password.
@@ -33,18 +35,20 @@ class LoginAPIView(APIView):
         password = "Pass@1234"
 
         if not phone:
-            return Response({"detail": "Phone and password are required."}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"detail": "Phone number is required."}, status=status.HTTP_400_BAD_REQUEST)
 
         # Validate phone number
         if not re.fullmatch(r'^\d{10}$', phone):
             return Response({"detail": "Phone number must be exactly 10 digits without spaces."})
         
         try:
+            print("Inside login 43")
             # Get user by phone
             user = User.objects.get(phone=phone , countryCode = countryCode)
 
             # Check password
             if user.check_password(password):
+                print("I am here 49 inside login")
                 # Log the user in (optional)
                 login(request, user)
 
@@ -75,6 +79,13 @@ class LoginAPIView(APIView):
 
         except User.DoesNotExist:
             return Response({"status":False,"message": "User with this phone does not exist."}, status=status.HTTP_404_NOT_FOUND)
+    
+        except Exception as e:
+            # Print the full stack trace to the terminal
+            print("An error occurred:", str(e))
+            traceback.print_exc()  # This will print the full traceback for debugging
+
+            return Response({"status": False, "message": "An unexpected error occurred."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 
