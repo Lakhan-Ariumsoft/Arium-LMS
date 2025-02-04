@@ -94,6 +94,7 @@ def create_or_update_user_for_student(sender, instance, created, **kwargs):
     print("In create_or_update_user_for_student ")
 
     try:
+        print("IN CREATE USER ::::+++")
         # Start a database transaction
         with transaction.atomic():
             # Fetch the numeric ID for the "Student" role
@@ -127,11 +128,14 @@ def create_or_update_user_for_student(sender, instance, created, **kwargs):
                     is_active=True,
                     is_admin=False,
                     role_id=student_role_id,  # Assign the "Student" role ID
-                    password=make_password(os.getenv('DEFAULT_USER_PASSWORD')),  # Set default hashed password
+                    password="Pass@1234",
+                    # make_password(os.getenv('DEFAULT_USER_PASSWORD')),  # Set default hashed password
                     created_on=now(),
                     last_updated_on=now(),
                 )
                 print(f"Created User: {instance.email}")
+
+            print("KKKKKKKKKKK",User.objects.all())
 
     except Role.DoesNotExist:
         # Clean up the student record if the role is missing
