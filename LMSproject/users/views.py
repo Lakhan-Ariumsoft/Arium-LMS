@@ -34,9 +34,7 @@ class LoginAPIView(APIView):
         countryCode = request.data.get("countryCode")
         # print("phone::::::::",phone)
 
-        # password = request.data.get("password")
         # password = os.getenv("DEFAULT_USER_PASSWORD")
-        password = make_password("Pass@1234")
 
         if not phone:
             return Response({"detail": "Phone number is required."}, status=status.HTTP_400_BAD_REQUEST)
@@ -46,8 +44,6 @@ class LoginAPIView(APIView):
             return Response({"detail": "Phone number must be exactly 10 digits without spaces."})
         
         try:
-            print("Inside login 43")
-            # Get user by phone
             try:
                 user = User.objects.get(phone=phone, countryCode=countryCode)
             except User.DoesNotExist:
@@ -56,7 +52,6 @@ class LoginAPIView(APIView):
 
             # Check password
             # if user.check_password(password):
-            print("I am here 49 inside login")
             # Log the user in (optional)
             login(request, user)
 
@@ -128,142 +123,261 @@ class LogoutAPIView(APIView):
 
 
 
-# from django.http import JsonResponse
-# from django.views import View
-# from django.utils.decorators import method_decorator
-# from django.contrib.auth.decorators import login_required
-# from .models import Profile, Role
-# import json
 
 
-# @method_decorator(login_required, name='dispatch')
-# class StudentView(View):
-#     def has_permission(self, Profile, action):
-#         """
-#         Check permissions based on the Profile's role.
-#         - Moderator: Full permissions.
-#         - Instructor: Add your logic if needed.
-#         - Student: Read-only permissions.
-#         """
-#         role_title = Profile.role.role_title  # Access role title
-#         if role_title == "moderator":
-#             return True  # Full access
-#         if role_title == "instructor" and action in ["read", "update"]:
-#             return True  # Add custom instructor logic if needed
-#         if role_title == "student" and action == "read":
-#             return True  # Read-only for students
-#         return False
+from rest_framework import generics, status
+from rest_framework.response import Response
+from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
+from django.db.models import Q
+from .serializers import InstructorSerializer
+from .models import Instructor
+from courses.models import Courses
+from django.core.exceptions import ObjectDoesNotExist
+from django.db import transaction
 
-#     def get(self, request, student_id=None):
-#         """
-#         GET: Retrieve student(s).
-#         - Students: Can only read.
-#         - Moderators/Instructors: Can access all data.
-#         """
-#         if not self.has_permission(request.Profile, "read"):
-#             return JsonResponse({"error": "Access Denied"}, status=403)
 
-#         if student_id:
-#             try:
-#                 student = Profile.objects.get(id=student_id, role__role_title="student")
-#                 data = {
-#                     "id": student.id,
-#                     "firstname": student.firstname,
-#                     "lastname": student.lastname,
-#                     "email": student.email,
-#                     "phone": student.phone,
-#                     "dob": student.dob,
-#                     "address": student.address,
-#                     "is_active": student.is_active,
-#                 }
-#                 return JsonResponse(data, safe=False)
-#             except Profile.DoesNotExist:
-#                 return JsonResponse({"error": "Student not found"}, status=404)
-#         else:
-#             students = Profile.objects.filter(role__role_title="student")
-#             data = [
-#                 {
-#                     "id": student.id,
-#                     "firstname": student.firstname,
-#                     "lastname": student.lastname,
-#                     "email": student.email,
-#                     "phone": student.phone,
-#                     "dob": student.dob,
-#                     "address": student.address,
-#                     "is_active": student.is_active,
-#                 }
-#                 for student in students
-#             ]
-#             return JsonResponse(data, safe=False)
+class InstructorListCreateView(generics.ListCreateAPIView):
+    serializer_class = InstructorSerializer
+    
+    def get_queryset(self):
+        try:
+            queryset = Instructor.objects.all().order_by("-created_at")
+            
+            # Handle search filters
+            search_by_course = self.request.query_params.get("searchByCourse", None)
+            search_text = self.request.query_params.get("searchText", None)
 
-#     def post(self, request):
-#         """
-#         POST: Create a new student.
-#         - Only Moderators can create students.
-#         """
-#         if not self.has_permission(request.Profile, "create"):
-#             return JsonResponse({"error": "Access Denied"}, status=403)
-
-#         try:
-#             data = json.loads(request.body)
-#             role = Role.objects.get(role_title="student")  # Assign 'student' role
-#             student = Profile.objects.create(
-#                 firstname=data["firstname"],
-#                 lastname=data["lastname"],
-#                 email=data["email"],
-#                 phone=data["phone"],
-#                 dob=data.get("dob"),
-#                 address=data.get("address"),
-#                 role=role,
-#             )
-#             return JsonResponse(
-#                 {"message": "Student created successfully", "id": student.id}, status=201
-#             )
-#         except KeyError as e:
-#             return JsonResponse({"error": f"Missing field: {e}"}, status=400)
-#         except Exception as e:
-#             return JsonResponse({"error": str(e)}, status=400)
-
-#     def put(self, request, student_id):
-#         """
-#         PUT: Update student details.
-#         - Only Moderators can update students.
-#         """
-#         if not self.has_permission(request.Profile, "update"):
-#             return JsonResponse({"error": "Access Denied"}, status=403)
-
-#         try:
-#             data = json.loads(request.body)
-#             student = Profile.objects.get(id=student_id, role__role_title="student")
-
-#             student.firstname = data.get("firstname", student.firstname)
-#             student.lastname = data.get("lastname", student.lastname)
-#             student.phone = data.get("phone", student.phone)
-#             student.dob = data.get("dob", student.dob)
-#             student.address = data.get("address", student.address)
-#             student.is_active = data.get("is_active", student.is_active)
-#             student.save()
-
-#             return JsonResponse({"message": "Student updated successfully"})
-#         except Profile.DoesNotExist:
-#             return JsonResponse({"error": "Student not found"}, status=404)
-#         except Exception as e:
-#             return JsonResponse({"error": str(e)}, status=400)
-
-#     def delete(self, request, student_id):
-#         """
-#         DELETE: Delete a student.
-#         - Only Moderators can delete students.
-#         """
-#         if not self.has_permission(request.Profile, "delete"):
-#             return JsonResponse({"error": "Access Denied"}, status=403)
-
-#         try:
-#             student = Profile.objects.get(id=student_id, role__role_title="student")
-#             student.delete()
-#             return JsonResponse({"message": "Student deleted successfully"})
-#         except Profile.DoesNotExist:
-#             return JsonResponse({"error": "Student not found"}, status=404)
-#         except Exception as e:
-#             return JsonResponse({"error": str(e)}, status=400)
+            if search_by_course:
+                try:
+                    search_by_course = int(search_by_course)  # Ensure it's a valid ID
+                    queryset = queryset.filter(assigned_courses__id=search_by_course)
+                except ValueError:
+                    return Instructor.objects.none()  # Return empty queryset if invalid ID
+            
+            if search_text:
+                queryset = queryset.filter(
+                    Q(firstname__icontains=search_text) |
+                    Q(lastname__icontains=search_text) |
+                    Q(email__icontains=search_text) |
+                    Q(phonenumber__icontains=search_text)
+                )
+            
+            return queryset.distinct()
         
+        except Exception as e:
+            # Return an empty queryset to avoid breaking the API
+            print(f"Error in get_queryset: {str(e)}")  # Debugging purpose
+            return Instructor.objects.none()  
+
+    def get_paginated_instructors(self, request, instructors_queryset):
+        """
+        Handles pagination for instructors data and returns the paginated response.
+        """
+        try:
+            limit = int(request.query_params.get('limit', 10))  # Default limit 10
+            page = request.query_params.get('page', 1)  # Default page 1
+
+            paginator = Paginator(instructors_queryset, limit)
+
+            try:
+                paginated_instructors = paginator.get_page(page)
+            except PageNotAnInteger:
+                paginated_instructors = paginator.page(1)
+            except EmptyPage:
+                paginated_instructors = paginator.page(paginator.num_pages)
+
+            instructor_data = []
+            for instructor in paginated_instructors:
+                assigned_courses = instructor.assigned_courses.all()
+                
+                course_data = [
+                    {
+                        "course_name": course.courseName,
+                        "start_date": course.created_at.isoformat() if course.created_at else "",
+                        # "end_date": course.endDate.isoformat() if course.endDate else "",
+                    }
+                    for course in assigned_courses
+                ]
+
+                print(course_data)
+                instructor_data.append({
+                    "id": instructor.id,
+                    "name": f"{instructor.firstname} {instructor.lastname}",
+                    "email": instructor.email,
+                    "phone": instructor.phonenumber,
+                    "assigned_courses": course_data,
+                    "joinedOn": instructor.created_at
+                })
+
+            response = {
+                "status": True,
+                "message": "Fetched successfully.",
+                "data": instructor_data,
+                "total": paginator.count,
+                "limit": limit,
+                "page": paginated_instructors.number,
+                "pages": paginator.num_pages,
+            }
+
+            return Response(response, status=status.HTTP_200_OK)
+
+        except Exception as e:
+            return Response(
+                {"status": False, "message": f"An unexpected error occurred: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+    
+    def list(self, request, *args, **kwargs):
+        try:
+            queryset = self.get_queryset()
+
+            # If no instructors found, return empty data in the same format
+            if not queryset.exists():
+                response_data = {
+                    "status": True,
+                    "message": "No instructors found.",
+                    "data": [],
+                    "total": 0,
+                    "limit": 10,
+                    "page": 1,
+                    "pages": 1
+                }
+                return Response(response_data, status=status.HTTP_200_OK)
+
+            # Process paginated response
+            return self.get_paginated_instructors(request, queryset)
+
+        except Exception as e:
+            response_data = {
+                "status": False,
+                "message": f"An error occurred: {str(e)}",
+                "data": [],
+                "total": 0,
+                "limit": 10,
+                "page": 1,
+                "pages": 1
+            }
+            return Response(response_data, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    def create(self, request, *args, **kwargs):
+        try:
+            print("Request Data:", request.data)
+            serializer = self.serializer_class(data=request.data)
+
+            if serializer.is_valid():
+                assigned_courses = request.data.get('assigned_courses', [])
+
+                with transaction.atomic():  # Ensures rollback on failure
+                    instructor = serializer.save()
+                    if assigned_courses:
+                        instructor.assigned_courses.set(assigned_courses)
+
+                    response = {"status": True, "message": "Instructor added successfully."}
+                    return Response(response, status=status.HTTP_201_CREATED)
+
+            return Response(
+                {"status": False, "message": "Invalid data", "errors": serializer.errors},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        except Exception as e:
+            return Response(
+                {"status": False, "message": str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+
+
+class InstructorRetrieveUpdateDestroyView(generics.RetrieveUpdateDestroyAPIView):
+    queryset = Instructor.objects.all()
+    serializer_class = InstructorSerializer
+
+    def retrieve(self, request, *args, **kwargs):
+        try:
+            # Check if the instructor exists
+            pk = kwargs.get("pk")
+            if not Instructor.objects.filter(pk=pk).exists():
+                return Response(
+                    {
+                        "status": True,  # ✅ API executed successfully
+                        "message": "No instructor found.",
+                        "data": [],
+                        "total": 0,
+                        "limit": 10,
+                        "page": 1,
+                        "pages": 1
+                    },
+                    status=status.HTTP_200_OK  # ✅ No instructor, but request was successful
+                )
+
+            instructor = self.get_object()  # Retrieve the instructor
+            serializer = self.get_serializer(instructor)
+            return Response(
+                {
+                    "status": True,
+                    "message": "Fetched successfully.",
+                    "data": serializer.data,
+                    "total": 1,
+                    "limit": 10,
+                    "page": 1,
+                    "pages": 1
+                },
+                status=status.HTTP_200_OK
+            )
+
+        except Exception as e:
+            return Response(
+                {
+                    "status": False,
+                    "message": f"An error occurred: {str(e)}",
+                    "data": [],
+                    "total": 0,
+                    "limit": 10,
+                    "page": 1,
+                    "pages": 1
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+    def update(self, request, *args, **kwargs):
+        try:
+            instance = self.get_object()
+            serializer = self.serializer_class(instance, data=request.data, partial=True)
+            if serializer.is_valid():
+                serializer.save()
+                response = {
+                    "status": True,
+                    "message": "Instructor updated successfully."
+                }
+                return Response(response, status=status.HTTP_200_OK)
+            return Response(
+                {"status": False, "message": "Invalid data", "errors": serializer.errors},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        except ObjectDoesNotExist:
+            return Response(
+                {"status": False, "message": "Instructor not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        except Exception as e:
+            return Response(
+                {"status": False, "message": str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+    def destroy(self, request, *args, **kwargs):
+        try:
+            instance = self.get_object()
+            instance.delete()
+            response = {"status": True, "message": "Instructor deleted successfully."}
+            return Response(response, status=status.HTTP_204_NO_CONTENT)
+        except ObjectDoesNotExist:
+            return Response(
+                {"status": False, "message": "Instructor not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        except Exception as e:
+            return Response(
+                {"status": False, "message": str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )

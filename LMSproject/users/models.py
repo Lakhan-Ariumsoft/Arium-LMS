@@ -1,6 +1,6 @@
 from django.contrib.auth.models import AbstractUser
 from django.db import models
-
+from courses.models import Courses
 
 class Permission(models.Model):
     name = models.CharField(max_length=100, unique=True)
@@ -46,6 +46,21 @@ class User(AbstractUser):
 
     def __str__(self):
         return f"{self.username})"
+    
+
+class Instructor(models.Model):
+    firstname = models.CharField(max_length=255)
+    lastname = models.CharField(max_length=255)
+    email = models.EmailField(unique=True)
+    phonenumber = models.CharField(max_length=15, unique=True)
+    dob = models.DateField()
+    address = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    assigned_courses = models.ManyToManyField(Courses, related_name="instructors")
+
+    def __str__(self):
+        return f"{self.firstname} {self.lastname}"
 
 
 

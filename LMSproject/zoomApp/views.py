@@ -476,36 +476,92 @@ class RecordingsView(APIView):
                 "error": str(e)
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-    
     def put(self, request, pk):
         try:
+            # Retrieve the recording by primary key
             recording = Recordings.objects.get(id=pk)
-            old_courses = list(recording.course.all()) if recording.course else []
+
+            # Get the course IDs to add/remove from the request
+            remove_course_ids = set(request.data.get("removeRecordingList", []))
+            add_course_ids = set(request.data.get("addRecordingList", []))
+
+            # Initialize the serializer with partial data
             serializer = RecordingsSerializer(recording, data=request.data, partial=True)
-            
+
             if serializer.is_valid():
+                # Save the validated data to update the recording
+                validated_data = serializer.validated_data
                 updated_recording = serializer.save()
-                
-                new_courses = list(updated_recording.course.all()) if updated_recording.course else []
-                removed_courses = set(old_courses) - set(new_courses)
-                added_courses = set(new_courses) - set(old_courses)
-                
-                for course in removed_courses:
-                    course.videosCount -= 1
-                    course.save()
-                
-                for course in added_courses:
-                    course.videosCount += 1
-                    course.save()
-                
+
+                # Handle course assignments if course data is provided
+                if 'addRecordingList' in request.data or 'removeRecordingList' in request.data:
+                    add_list = add_course_ids
+                    remove_list = remove_course_ids
+
+                    # Ensure old_courses exists, even if instance.course is None
+                    old_courses = set(updated_recording.course.all()) if updated_recording.course else set()
+
+                    # Identify courses to remove
+                    removed_courses = {course for course in old_courses if course.id in remove_list} if remove_list else set()
+
+                    # Identify courses to add
+                    new_courses = Courses.objects.filter(id__in=add_list).first()
+
+                    # Compute the final course set and update the recording's course field
+                    final_courses = (old_courses - removed_courses) | new_courses
+
+                    # Check if 'course' exists and is not None
+                    if updated_recording.course is None:
+                        print("updated_recording.course+++++",updated_recording.course , updated_recording.recording_url , updated_recording , new_courses )
+                        updated_recording.course = new_courses  # Use .set() to assign courses
+                    else:
+                        updated_recording.course = final_courses  # Otherwise, update with final courses
+
+                    # Track changes summary for course updates
+                    changes_summary = {
+                        "added_courses": [course.courseName for course in new_courses - old_courses],
+                        "removed_courses": [course.courseName for course in removed_courses],
+                        "updated_fields": []
+                    }
+
+                    # Update `videosCount` for newly added courses
+                    for course in new_courses - old_courses:
+                        course.videosCount += 1
+                        course.save()
+
+                    # Update `videosCount` for removed courses
+                    for course in removed_courses:
+                        course.videosCount = max(0, course.videosCount - 1)
+                        course.save()
+
+                else:
+                    changes_summary = {
+                        "added_courses": [],
+                        "removed_courses": [],
+                        "updated_fields": []
+                    }
+
+                # Update other fields in the `Recordings` table
+                for attr, value in validated_data.items():
+                    if attr not in ['addRecordingList', 'removeRecordingList']:
+                        setattr(updated_recording, attr, value)
+                        changes_summary["updated_fields"].append(attr)
+
+                # Save the updated recording instance
+                updated_recording.save()
+
                 return Response({
                     "status": True,
                     "message": "Recording updated successfully.",
-                    "data": serializer.data
+                    "data": serializer.data,
+                    "changes": changes_summary
                 }, status=status.HTTP_200_OK)
+
             return Response({"status": False, "message": "Invalid data.", "errors": serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
+
         except Recordings.DoesNotExist:
             return Response({"status": False, "message": "Recording not found."}, status=status.HTTP_404_NOT_FOUND)
+
     
     def delete(self, request, pk):
         try:

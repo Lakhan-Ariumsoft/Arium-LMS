@@ -1,5 +1,7 @@
 from rest_framework import serializers
 from .models import User, Role, Permission
+from .models import Instructor
+from courses.models import Courses
 
 class PermissionSerializer(serializers.ModelSerializer):
     class Meta:
@@ -55,3 +57,94 @@ class UserSerializer(serializers.ModelSerializer):
             instance.role.save()
 
         return instance
+    
+
+# instructor  serializers.py
+
+
+
+from rest_framework import serializers
+from .models import Instructor
+from courses.models import Courses
+from django.db import transaction
+import traceback
+
+class InstructorSerializer(serializers.ModelSerializer):
+    # Adding assigned courses for the instructor
+    # assigned_courses = serializers.SerializerMethodField()
+    assigned_courses = serializers.PrimaryKeyRelatedField(
+        queryset=Courses.objects.all(), many=True, required=False
+    )
+
+    class Meta:
+        model = Instructor
+        fields = ['id', 'firstname', 'lastname', 'email', 'phonenumber', 'dob', 'address', 'created_at', 'updated_at', 'assigned_courses' ]
+
+    def get_assigned_courses(self, obj):
+        # Get the names of the courses assigned to the instructor
+        assigned_courses = obj.assigned_courses.all()
+        return [{"course_name": course.courseName} for course in assigned_courses] if assigned_courses.exists() else []
+
+    def create(self, validated_data):
+        email = validated_data.pop("email")  # Extract email separately
+        firstname = validated_data.pop("firstname")
+        lastname = validated_data.pop("lastname")
+        phonenumber = validated_data.pop("phonenumber")
+        assigned_courses = validated_data.pop("assigned_courses", [])  # Extract courses
+
+        try:
+            with transaction.atomic():  # Rollback if an error occurs
+                # Fetch or create role instance
+                instructor_role, _ = Role.objects.get_or_create(name__iexact='instructor')
+
+                # Check if user already exists
+                user, created = User.objects.get_or_create(email=email, defaults={
+                    "username": email,
+                    "first_name": firstname,
+                    "last_name": lastname,
+                    "phone": phonenumber,
+                    "role": instructor_role,  
+                    "is_active": True
+                })
+
+                # If user exists but inactive, reactivate
+                if not created and not user.is_active:
+                    user.is_active = True
+                    user.first_name = firstname
+                    user.last_name = lastname
+                    user.phone = phonenumber
+                    user.role = instructor_role
+                    user.save()
+
+                # Create Instructor entry
+                instructor = Instructor.objects.create(
+                    email=email, firstname=firstname, lastname=lastname,
+                    phonenumber=phonenumber, **validated_data
+                )
+
+                print("Assigned Courses:", assigned_courses)
+                if assigned_courses:
+                    print(f"Raw assigned_courses: {assigned_courses}")  
+
+                    # Ensure assigned_courses is a list of integers (IDs)
+                    assigned_course_ids = [course.id if isinstance(course, Courses) else course for course in assigned_courses]
+                    print(f"Processed assigned_course_ids: {assigned_course_ids}")  
+
+                    # Fetch courses using the corrected IDs
+                    courses = Courses.objects.filter(id__in=assigned_course_ids)
+                    print(f"Filtered courses: {list(courses.values_list('id', flat=True))}")  
+                    print("+++++++++++++++ Courses +++++++++++++", courses)
+
+                    if courses.exists():
+                        instructor.assigned_courses.set(courses)  #  Correct way to assign many-to-many
+                    else:
+                        raise ValueError("Invalid Course IDs provided.")
+
+
+                return instructor
+
+        except Exception as e:
+            tb = traceback.format_exc()  # Get full traceback
+            print(f"Error creating instructor: {str(e)}")
+            print(f"Traceback:\n{tb}")  # Print full traceback
+            raise ValueError(f"Failed to create instructor: {str(e)}")
