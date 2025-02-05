@@ -209,7 +209,8 @@ class CourseView(APIView):
             # Pagination logic
             limit = int(request.query_params.get('limit', 10))
             page_number = request.query_params.get('page', 1)
-            paginator = Paginator(courses, limit)
+            allcourses = Courses.objects.all().order_by('id') 
+            paginator = Paginator(allcourses, limit)
             page_obj = paginator.get_page(page_number)
 
             # Serialize the paginated courses
