@@ -159,7 +159,10 @@ class InstructorListCreateView(generics.ListCreateAPIView):
                     Q(firstname__icontains=search_text) |
                     Q(lastname__icontains=search_text) |
                     Q(email__icontains=search_text) |
-                    Q(phonenumber__icontains=search_text)
+                    Q(phone__icontains=search_text) | 
+                    Q(countryCode__icontains= search_text) 
+                    # Q(assigned_courses__icontains=search_text)
+
                 )
             
             return queryset.distinct()
@@ -194,6 +197,7 @@ class InstructorListCreateView(generics.ListCreateAPIView):
                     {
                         "course_name": course.courseName,
                         "start_date": course.created_at.isoformat() if course.created_at else "",
+                        "videosCount" : course.videosCount if course.videosCount else 0
                         # "end_date": course.endDate.isoformat() if course.endDate else "",
                     }
                     for course in assigned_courses
@@ -204,7 +208,8 @@ class InstructorListCreateView(generics.ListCreateAPIView):
                     "id": instructor.id,
                     "name": f"{instructor.firstname} {instructor.lastname}",
                     "email": instructor.email,
-                    "phone": instructor.phonenumber,
+                    "phone": instructor.phone,
+                    "countryCode" : instructor.countryCode,
                     "assigned_courses": course_data,
                     "joinedOn": instructor.created_at
                 })
@@ -229,13 +234,20 @@ class InstructorListCreateView(generics.ListCreateAPIView):
     
     def list(self, request, *args, **kwargs):
         try:
-            queryset = self.get_queryset()
+            print("IN LIst")
+            search_by_course = request.query_params.get("searchByCourse", None)
+            search_text = request.query_params.get("searchText", None)
 
-            # If no instructors found, return empty data in the same format
+            queryset = self.get_queryset()
+            # Check if the request contains search filters
+            is_search_query = bool(search_by_course or search_text)
+
+            # If no instructors found
             if not queryset.exists():
+                response_message = "No Search Data found." if is_search_query else "No instructors found."
                 response_data = {
                     "status": True,
-                    "message": "No instructors found.",
+                    "message": response_message,
                     "data": [],
                     "total": 0,
                     "limit": 10,
@@ -293,23 +305,91 @@ class InstructorRetrieveUpdateDestroyView(generics.RetrieveUpdateDestroyAPIView)
 
     def retrieve(self, request, *args, **kwargs):
         try:
-            # Check if the instructor exists
-            pk = kwargs.get("pk")
-            if not Instructor.objects.filter(pk=pk).exists():
+            # Get query parameters
+            instructor_id = kwargs.get("pk")  # Primary key if provided
+            search_by_course = request.query_params.get("searchByCourse", "").strip()
+            search_text = request.query_params.get("searchText", "").strip()
+
+            print("++++++++in retrivce" ,search_text )
+
+            # If no instructors exist in the DB at all
+            if not Instructor.objects.exists():
                 return Response(
                     {
-                        "status": True,  # ✅ API executed successfully
-                        "message": "No instructor found.",
+                        "status": True,
+                        "message": "No records in database.",
                         "data": [],
                         "total": 0,
                         "limit": 10,
                         "page": 1,
                         "pages": 1
                     },
-                    status=status.HTTP_200_OK  # ✅ No instructor, but request was successful
+                    status=status.HTTP_200_OK
                 )
 
-            instructor = self.get_object()  # Retrieve the instructor
+            # Fetch instructor based on ID if provided
+            if instructor_id:
+                instructor = Instructor.objects.filter(pk=instructor_id).first()
+                if not instructor:
+                    return Response(
+                        {
+                            "status": True,
+                            "message": "No instructor found.",
+                            "data": [],
+                            "total": 0,
+                            "limit": 10,
+                            "page": 1,
+                            "pages": 1
+                        },
+                        status=status.HTTP_200_OK
+                    )
+            else:
+                # If no ID is provided, apply search filters
+                queryset = Instructor.objects.all()
+
+                if search_by_course:
+                    try:
+                        search_by_course = int(search_by_course)  # Ensure it's a valid integer ID
+                        queryset = queryset.filter(assigned_courses__id=search_by_course)
+                    except ValueError:
+                        return Response(
+                            {
+                                "status": True,
+                                "message": "Invalid course ID provided.",
+                                "data": [],
+                                "total": 0,
+                                "limit": 10,
+                                "page": 1,
+                                "pages": 1
+                            },
+                            status=status.HTTP_400_BAD_REQUEST
+                        )
+
+                if search_text:
+                    queryset = queryset.filter(
+                        Q(firstname__icontains=search_text) |
+                        Q(lastname__icontains=search_text) |
+                        Q(email__icontains=search_text) |
+                        Q(phone__icontains=search_text)
+                    )
+
+                if not queryset.exists():
+                    return Response(
+                        {
+                            "status": True,
+                            "message": "No search data found." if (search_text or search_by_course) else "No instructor found.",
+                            "data": [],
+                            "total": 0,
+                            "limit": 10,
+                            "page": 1,
+                            "pages": 1
+                        },
+                        status=status.HTTP_200_OK
+                    )
+
+                instructor = queryset.first()  # Return the first matched instructor
+
+            # Serialize and return instructor data
             serializer = self.get_serializer(instructor)
             return Response(
                 {

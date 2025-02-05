@@ -78,7 +78,7 @@ class InstructorSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Instructor
-        fields = ['id', 'firstname', 'lastname', 'email', 'phonenumber', 'dob', 'address', 'created_at', 'updated_at', 'assigned_courses' ]
+        fields = ['id', 'firstname', 'lastname', 'email', 'phone','countryCode' ,'dob', 'address', 'created_at', 'updated_at', 'assigned_courses' ]
 
     def get_assigned_courses(self, obj):
         # Get the names of the courses assigned to the instructor
@@ -89,7 +89,9 @@ class InstructorSerializer(serializers.ModelSerializer):
         email = validated_data.pop("email")  # Extract email separately
         firstname = validated_data.pop("firstname")
         lastname = validated_data.pop("lastname")
-        phonenumber = validated_data.pop("phonenumber")
+        phone = validated_data.pop("phone")
+        countryCode = validated_data.pop("countryCode")
+
         assigned_courses = validated_data.pop("assigned_courses", [])  # Extract courses
 
         try:
@@ -102,7 +104,8 @@ class InstructorSerializer(serializers.ModelSerializer):
                     "username": email,
                     "first_name": firstname,
                     "last_name": lastname,
-                    "phone": phonenumber,
+                    "phone": phone,
+                    "countryCode":countryCode,
                     "role": instructor_role,  
                     "is_active": True
                 })
@@ -112,14 +115,15 @@ class InstructorSerializer(serializers.ModelSerializer):
                     user.is_active = True
                     user.first_name = firstname
                     user.last_name = lastname
-                    user.phone = phonenumber
+                    user.phone = phone
+                    user.countryCode = countryCode
                     user.role = instructor_role
                     user.save()
 
                 # Create Instructor entry
                 instructor = Instructor.objects.create(
                     email=email, firstname=firstname, lastname=lastname,
-                    phonenumber=phonenumber, **validated_data
+                    phone=phone,countryCode=countryCode,**validated_data
                 )
 
                 print("Assigned Courses:", assigned_courses)
