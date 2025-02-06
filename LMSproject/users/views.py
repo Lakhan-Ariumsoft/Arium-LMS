@@ -450,7 +450,7 @@ class InstructorRetrieveUpdateDestroyView(generics.RetrieveUpdateDestroyAPIView)
             instance = self.get_object()
             instance.delete()
             response = {"status": True, "message": "Instructor deleted successfully."}
-            return Response(response, status=status.HTTP_204_NO_CONTENT)
+            return Response(response, status=status.HTTP_200_OK)  # Changed from 204 to 200
         except ObjectDoesNotExist:
             return Response(
                 {"status": False, "message": "Instructor not found."},
@@ -461,3 +461,4 @@ class InstructorRetrieveUpdateDestroyView(generics.RetrieveUpdateDestroyAPIView)
                 {"status": False, "message": str(e)},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
+
