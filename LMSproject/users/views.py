@@ -470,6 +470,105 @@ class InstructorRetrieveUpdateDestroyView(generics.RetrieveUpdateDestroyAPIView)
             )
 
 
+# class InstructorDashboardView(APIView):
+#     permission_classes = [IsAuthenticated, IsModeratorOrInstructor]
+
+#     def get(self, request):
+#         try:
+#             # Get logged-in instructor
+#             instructor = Instructor.objects.filter(email=request.user.email).first()
+#             if not instructor:
+#                 return Response(
+#                     {"status": False, "message": "Instructor not found."},
+#                     status=status.HTTP_404_NOT_FOUND,
+#                 )
+
+#             # Get assigned courses
+#             courses = instructor.assigned_courses.all()
+#             if not courses.exists():
+#                 return Response(
+#                     {"status": False, "message": "Instructor is not assigned to any course."},
+#                     status=status.HTTP_404_NOT_FOUND,
+#                 )
+
+#             # Apply search filter
+#             search_text = request.query_params.get("searchText", None)
+#             if search_text:
+#                 courses = courses.filter(
+#                     Q(courseName__icontains=search_text) |
+#                     Q(created_at__icontains=search_text) |
+#                     Q(updated_at__icontains=search_text)
+#                 )
+
+#             # If no results after search
+#             if not courses.exists():
+#                 return Response(
+#                     {
+#                         "status": False,
+#                         "message": "No search data found.",
+#                         "data": [],
+#                         "total": 0,
+#                         "limit": 10,
+#                         "page": 1,
+#                         "pages": 0,
+#                     },
+#                     status=status.HTTP_404_NOT_FOUND,
+#                 )
+
+#             # Annotate required fields
+#             courses = courses.annotate(
+#                 total_videos=Count("recordings"),
+#                 total_students=Count("students")
+#             ).order_by("-updated_at")
+
+#             # Pagination
+#             limit = int(request.query_params.get("limit", 10))
+#             page_number = int(request.query_params.get("page", 1))
+#             paginator = Paginator(courses, limit)
+#             page_obj = paginator.get_page(page_number)
+
+#             # Serialize data
+#             response_data = [
+#                 {
+#                     "courseName": course.courseName,
+#                     "TotalVideos": course.total_videos,
+#                     "TotalStudent": course.total_students,
+#                     "LastUpdatedDate": course.updated_at.strftime("%Y-%m-%d %H:%M:%S"),
+#                 }
+#                 for course in page_obj
+#             ]
+
+#             return Response(
+#                 {
+#                     "status": True if paginator.count > 0 else False,
+#                     "message": "Courses fetched successfully.",
+#                     "data": response_data,
+#                     "total": paginator.count,
+#                     "limit": limit,
+#                     "page": page_number,
+#                     "pages": paginator.num_pages,
+#                 },
+#                 status=status.HTTP_200_OK,
+#             )
+
+#         except Exception as e:
+#             return Response(
+#                 {"status": False, "message": f"An error occurred: {str(e)}"},
+#                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+#             )
+
+
+
+from datetime import datetime
+from django.db.models import Q, Count
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import status
+from rest_framework.permissions import IsAuthenticated
+from django.core.paginator import Paginator
+from zoomApp.models import Recordings
+from .permissions import IsModeratorOrInstructor
+
 class InstructorDashboardView(APIView):
     permission_classes = [IsAuthenticated, IsModeratorOrInstructor]
 
@@ -481,6 +580,42 @@ class InstructorDashboardView(APIView):
                 return Response(
                     {"status": False, "message": "Instructor not found."},
                     status=status.HTTP_404_NOT_FOUND,
+                )
+
+            # Check for course recordings request
+            course_id = request.query_params.get("courseId", None)
+            if course_id:
+                # Fetch course and ensure instructor is assigned to it
+                course = instructor.assigned_courses.filter(id=course_id).first()
+                if not course:
+                    return Response(
+                        {"status": False, "message": "Course not found or not assigned to instructor."},
+                        status=status.HTTP_404_NOT_FOUND,
+                    )
+
+                # Fetch recordings for the course
+                recordings = Recordings.objects.filter(course=course).order_by("-created_at")
+
+                # If no recordings found
+                if not recordings.exists():
+                    return Response(
+                        {"status": False, "message": "No recordings found for this course.", "data": []},
+                        status=status.HTTP_404_NOT_FOUND,
+                    )
+
+                # Serialize response
+                recordings_data = [
+                    {
+                        "videoTitle": recording.title,
+                        "videoURL": recording.recording_url,
+                        "created_at": recording.created_at.strftime("%Y-%m-%d %H:%M:%S"),
+                    }
+                    for recording in recordings
+                ]
+
+                return Response(
+                    {"status": True, "message": "Recordings fetched successfully.", "data": recordings_data},
+                    status=status.HTTP_200_OK,
                 )
 
             # Get assigned courses
@@ -530,6 +665,7 @@ class InstructorDashboardView(APIView):
             # Serialize data
             response_data = [
                 {
+                    "courseId" :course.id,
                     "courseName": course.courseName,
                     "TotalVideos": course.total_videos,
                     "TotalStudent": course.total_students,
