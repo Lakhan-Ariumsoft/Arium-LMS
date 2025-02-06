@@ -357,53 +357,90 @@ def helperFunction(meeting_id):
         print(f"Critical error in upload_recordings for meeting ID '{meeting_id}': {e}")
 
 
+from django.shortcuts import get_object_or_404
+from django.db.models import F
+from django.db.models import ManyToManyField
+
+
 
 class RecordingsView(APIView):
     
-    def get(self, request):
+    def get(self, request, *args, **kwargs):
+        pk = kwargs.get("pk")  # Check if 'pk' is provided in the URL
+
+        if pk:
+            # Fetch a single Recording instance by pk if it exists
+            try:
+                recording = Recordings.objects.get(pk=pk)
+                serializer = RecordingsSerializer(recording)
+
+                # Return in the same format as list response
+                return JsonResponse({
+                    "status": True,
+                    "message": "Recording fetched successfully.",
+                    "data": serializer.data,
+                    "total": 1,  # Single recording, so total = 1
+                    "limit": 1,  # Limit is 1 for a single item
+                    "page": 1,   # Only one page when fetching one item
+                    "pages": 1   # One page in this case
+                }, status=status.HTTP_200_OK)
+            except Recordings.DoesNotExist:
+                return JsonResponse({
+                    "status": False,
+                    "message": "Recording not found.",
+                    "data": [],
+                    "total": 0,
+                    "limit": 1,
+                    "page": 1,
+                    "pages": 1
+                }, status=status.HTTP_404_NOT_FOUND)
+
+        # If no pk, continue with the filtering logic
         unassigned_videos = request.GET.get('specialClasses', None)
         dateRange = request.GET.get('dateRange', None)
         searchCourse = request.GET.get('searchCourse', None)
         search_text = request.GET.get('searchText', None)
         page = int(request.GET.get('page', 1))
         limit = int(request.GET.get('limit', 10))
-        
+
         queryset = Recordings.objects.all()
-        
+
+        # Filter for recordings with no assigned course (i.e., course is null or empty)
         if unassigned_videos:
             queryset = queryset.filter(course__isnull=True)
-        
-        if searchCourse:
-                try:
-                    # Try to filter by courseId first (if it looks like an ID)
-                    if searchCourse.isdigit():
-                        course = Courses.objects.get(id=searchCourse)
-                    else:
-                        # Otherwise, filter by courseName
-                        course = Courses.objects.get(name__icontains=searchCourse)
-                    
-                    queryset = queryset.filter(course=course)
-                except Courses.DoesNotExist:
-                    return JsonResponse({
-                        "status": False,
-                        "message": "Data not found.",
-                        "data": [],
-                        "total": 0,
-                        "limit": int(request.GET.get('limit', 10)),
-                        "page": int(request.GET.get('page', 1)),
-                        "pages": 1
-                    }, status=status.HTTP_400_BAD_REQUEST)
 
-        
+        # Filter for recordings associated with a specific course by ID
+        if searchCourse:
+            try:
+                course_id = int(searchCourse)
+                queryset = queryset.filter(course__id=course_id)
+            except ValueError:
+                return JsonResponse({
+                    "status": False,
+                    "message": "Invalid course ID format.",
+                    "data": [],
+                    "total": 0,
+                    "limit": limit,
+                    "page": page,
+                    "pages": 1
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+        # Multi-field search for title, course name, duration, and created_at
         if search_text:
-            queryset = queryset.filter(title__icontains=search_text)
-        
+            queryset = queryset.filter(
+                Q(title__icontains=search_text) |
+                # Q(course__name__icontains=search_text) |
+                Q(duration__icontains=search_text) |
+                Q(created_at__icontains=search_text)
+            )
+
+        # Filter recordings by date range
         if dateRange:
             try:
                 start_date_str, end_date_str = dateRange.split(":")
                 start_date = datetime.strptime(start_date_str.strip(), "%Y-%m-%d")
                 end_date = datetime.strptime(end_date_str.strip(), "%Y-%m-%d")
-                end_date = end_date.replace(hour=23, minute=59, second=59)  # Set end time to EOD
+                end_date = end_date.replace(hour=23, minute=59, second=59)
 
                 queryset = queryset.filter(updated_at__range=(start_date, end_date))
             except ValueError:
@@ -412,22 +449,23 @@ class RecordingsView(APIView):
                     "message": "Invalid date range format. Use 'YYYY-MM-DD:YYYY-MM-DD'."
                 }, status=status.HTTP_400_BAD_REQUEST)
 
-        
         paginator = Paginator(queryset, limit)
         paged_data = paginator.get_page(page)
-        
+
         if not paged_data:
             return JsonResponse({
                 "status": False,
-                "message": "No Search data found.",
+                "message": "No search data found.",
                 "data": [],
                 "total": 0,
                 "limit": limit,
                 "page": page,
                 "pages": 1
             }, status=status.HTTP_404_NOT_FOUND)
-        
+
         serializer = RecordingsSerializer(paged_data, many=True)
+
+        # Return the paginated results with course name list and id list
         return JsonResponse({
             "status": True,
             "message": "Recordings fetched successfully.",
@@ -437,16 +475,29 @@ class RecordingsView(APIView):
             "page": page,
             "pages": paginator.num_pages
         }, status=status.HTTP_200_OK)
+
     
     def post(self, request):
         try:
+            # Get the list of course IDs from the request data
+            course_ids = request.data.get('addRecordingList', [])
+            
+            # Pass the course IDs along with other data to the serializer
             serializer = RecordingsSerializer(data=request.data)
+            
             if serializer.is_valid():
-                recording = serializer.save()  # No need to update `videosCount` here
+                # Save the recording, which will also assign courses through `create` method
+                recording = serializer.save(addRecordingList=course_ids)
+                
+                # Prepare the response data to include course names and IDs
+                courses = recording.course.all()  # Get all related courses
+                course_data = [{"id": course.id, "courseName": course.courseName} for course in courses]
+                
                 return Response({
                     "status": True,
                     "message": "Recording created successfully.",
-                    "data": serializer.data
+                    "data": serializer.data,
+                    "courses": course_data  # Include course data (ID + name)
                 }, status=status.HTTP_201_CREATED)
             
             return Response({
@@ -476,92 +527,123 @@ class RecordingsView(APIView):
                 "error": str(e)
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-    def put(self, request, pk):
-        try:
-            # Retrieve the recording by primary key
-            recording = Recordings.objects.get(id=pk)
+   
+    # def put(self, request, *args, **kwargs):
+    #     pk = kwargs.get("pk")  # Get 'pk' from kwargs
+    #     recording = get_object_or_404(Recordings, pk=pk)
 
-            # Get the course IDs to add/remove from the request
-            remove_course_ids = set(request.data.get("removeRecordingList", []))
-            add_course_ids = set(request.data.get("addRecordingList", []))
+    #     #  Extract fields to update (only those present in request)
+    #     update_fields = {}
+    #     if "meeting_id" in request.data:
+    #         update_fields["meeting_id"] = request.data["meeting_id"]
+    #     if "title" in request.data:
+    #         update_fields["title"] = request.data["title"]
+    #     if "recording_url" in request.data:
+    #         update_fields["recording_url"] = request.data["recording_url"]
+    #     if "duration" in request.data:
+    #         update_fields["duration"] = request.data["duration"]
 
-            # Initialize the serializer with partial data
-            serializer = RecordingsSerializer(recording, data=request.data, partial=True)
+    #     #  Apply partial updates only if fields are provided
+    #     for field, value in update_fields.items():
+    #         setattr(recording, field, value)
 
-            if serializer.is_valid():
-                # Save the validated data to update the recording
-                validated_data = serializer.validated_data
-                updated_recording = serializer.save()
+    #     #  Handle courses
+    #     add_course_ids = set(request.data.get("addRecordingList", []))  # Courses to add
+    #     remove_course_ids = set(request.data.get("removeRecordingList", []))  # Courses to remove
 
-                # Handle course assignments if course data is provided
-                if 'addRecordingList' in request.data or 'removeRecordingList' in request.data:
-                    add_list = add_course_ids
-                    remove_list = remove_course_ids
+    #     if add_course_ids:
+    #         existing_course_ids = set(recording.course.values_list("id", flat=True))
+    #         new_courses_to_add = Courses.objects.filter(id__in=add_course_ids - existing_course_ids)
 
-                    # Ensure old_courses exists, even if instance.course is None
-                    old_courses = set(updated_recording.course.all()) if updated_recording.course else set()
+    #         recording.course.add(*new_courses_to_add)  # ✅ Add only new courses
 
-                    # Identify courses to remove
-                    removed_courses = {course for course in old_courses if course.id in remove_list} if remove_list else set()
+    #         # ✅ Update video counts for added courses
+    #         for course in new_courses_to_add:
+    #             course.videosCount += 1
+    #             course.save()
 
-                    # Identify courses to add
-                    new_courses = Courses.objects.filter(id__in=add_list).first()
+    #     if remove_course_ids:
+    #         courses_to_remove = recording.course.filter(id__in=remove_course_ids)
 
-                    # Compute the final course set and update the recording's course field
-                    final_courses = (old_courses - removed_courses) | new_courses
+    #         recording.course.remove(*courses_to_remove)  # ✅ Remove courses
 
-                    # Check if 'course' exists and is not None
-                    if updated_recording.course is None:
-                        print("updated_recording.course+++++",updated_recording.course , updated_recording.recording_url , updated_recording , new_courses )
-                        updated_recording.course = new_courses  # Use .set() to assign courses
-                    else:
-                        updated_recording.course = final_courses  # Otherwise, update with final courses
+    #         # ✅ Update video counts for removed courses
+    #         for course in courses_to_remove:
+    #             course.videosCount = max(0, course.videosCount - 1)
+    #             course.save()
 
-                    # Track changes summary for course updates
-                    changes_summary = {
-                        "added_courses": [course.courseName for course in new_courses - old_courses],
-                        "removed_courses": [course.courseName for course in removed_courses],
-                        "updated_fields": []
-                    }
+    #     # ✅ Save the recording only if any field was updated
+    #     if update_fields or add_course_ids or remove_course_ids:
+    #         recording.save()
 
-                    # Update `videosCount` for newly added courses
-                    for course in new_courses - old_courses:
-                        course.videosCount += 1
-                        course.save()
+    #     return Response({
+    #         "status": True,
+    #         "message": "Recording updated successfully.",
+    #         "updated_fields": update_fields,
+    #         "updated_courses": list(recording.course.values_list("id", flat=True))  # Return updated course IDs
+    #     }, status=status.HTTP_200_OK)
+    
+    def put(self, request, *args, **kwargs):
+        pk = kwargs.get("pk")  # Get 'pk' from kwargs
+        recording = get_object_or_404(Recordings, pk=pk)
 
-                    # Update `videosCount` for removed courses
-                    for course in removed_courses:
-                        course.videosCount = max(0, course.videosCount - 1)
-                        course.save()
+        # Extract fields to update (only those present in request)
+        update_fields = {}
+        if "meeting_id" in request.data:
+            update_fields["meeting_id"] = request.data["meeting_id"]
+        if "title" in request.data:
+            update_fields["title"] = request.data["title"]
+        if "recording_url" in request.data:
+            update_fields["recording_url"] = request.data["recording_url"]
+        if "duration" in request.data:
+            update_fields["duration"] = request.data["duration"]
 
-                else:
-                    changes_summary = {
-                        "added_courses": [],
-                        "removed_courses": [],
-                        "updated_fields": []
-                    }
+        # Apply partial updates only if fields are provided
+        for field, value in update_fields.items():
+            setattr(recording, field, value)
 
-                # Update other fields in the `Recordings` table
-                for attr, value in validated_data.items():
-                    if attr not in ['addRecordingList', 'removeRecordingList']:
-                        setattr(updated_recording, attr, value)
-                        changes_summary["updated_fields"].append(attr)
+        # Handle courses
+        add_course_ids = set(request.data.get("addRecordingList", []))  # Courses to add
+        remove_course_ids = set(request.data.get("removeRecordingList", []))  # Courses to remove
 
-                # Save the updated recording instance
-                updated_recording.save()
+        # Add new courses without removing existing ones
+        if add_course_ids:
+            existing_course_ids = set(recording.course.values_list("id", flat=True))
+            new_courses_to_add = Courses.objects.filter(id__in=add_course_ids - existing_course_ids)
 
-                return Response({
-                    "status": True,
-                    "message": "Recording updated successfully.",
-                    "data": serializer.data,
-                    "changes": changes_summary
-                }, status=status.HTTP_200_OK)
+            recording.course.add(*new_courses_to_add)  # Add only new courses
 
-            return Response({"status": False, "message": "Invalid data.", "errors": serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
+            # Update video counts for added courses
+            for course in new_courses_to_add:
+                course.videosCount += 1
+                course.save()
 
-        except Recordings.DoesNotExist:
-            return Response({"status": False, "message": "Recording not found."}, status=status.HTTP_404_NOT_FOUND)
+        # Remove courses as per the remove list
+        if remove_course_ids:
+            courses_to_remove = recording.course.filter(id__in=remove_course_ids)
 
+            recording.course.remove(*courses_to_remove)  # Remove courses
+
+            # Update video counts for removed courses
+            for course in courses_to_remove:
+                course.videosCount = max(0, course.videosCount - 1)
+                course.save()
+
+        # Save the recording only if any field was updated
+        if update_fields or add_course_ids or remove_course_ids:
+            recording.save()
+
+        # Return response with updated course list
+        return Response({
+            "status": True,
+            "message": "Recording updated successfully.",
+            "updated_fields": update_fields,
+            "updated_courses": list(recording.course.values_list("id", flat=True))  # Return updated course IDs
+        }, status=status.HTTP_200_OK)
+
+
+
+   
     
     def delete(self, request, pk):
         try:

@@ -2,7 +2,8 @@ from django.db import models
 from courses.models import Courses  # Ensure that the Courses model is correctly imported
 
 class Recordings(models.Model):
-    course = models.ForeignKey(Courses, null=True, blank=True, on_delete=models.SET_NULL)  # Allows blank course
+    course = models.ManyToManyField(Courses, related_name="recordings" , null=True)
+    # course = models.ForeignKey(Courses, null=True, blank=True, on_delete=models.SET_NULL)  # Allows blank course
     title = models.CharField(max_length=200)
     meeting_id = models.CharField(max_length=50)  # Meeting ID should be unique
     duration = models.IntegerField(blank=True)  # Duration is fine, but you might want to specify time units (seconds)

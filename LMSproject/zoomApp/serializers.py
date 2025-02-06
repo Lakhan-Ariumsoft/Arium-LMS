@@ -7,6 +7,7 @@ class RecordingsSerializer(serializers.ModelSerializer):
     removeRecordingList = serializers.ListField(write_only=True, required=False)
     # courseId = serializers.ListField(child=serializers.IntegerField(), write_only=True, required=False)
     course_names = serializers.SerializerMethodField()
+    # course = serializers.PrimaryKeyRelatedField(queryset=Courses.objects.all(), many=True, required=False)
 
     # class Meta:
         # model = Recordings
@@ -16,26 +17,52 @@ class RecordingsSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
     def get_course_names(self, obj):
-        return obj.course.courseName if obj.course else None  # Directly access courseName
+        return [course.courseName for course in obj.course.all()]
+        # return obj.course.courseName if obj.course else None  # Directly access courseName
 
 
     def create(self, validated_data):
-        courseId = validated_data.pop('addRecordingList', [])
+        # Get course IDs from the validated data (addRecordingList is provided in request)
+        course_ids = validated_data.pop('addRecordingList', [])
+        
+        # Create the recording instance
         recording = Recordings.objects.create(**validated_data)
 
-        if courseId:
-            courses = Courses.objects.filter(id__in=courseId).first()  # Get courses by IDs
-            if courses:
-                recording.course = courses  # Assign multiple courses
-            # Increment videosCount for each assigned course
-                # for course in :
-                courses.videosCount += 1
-                courses.save()
-            # else:
-            #     recording.status = "unassigned"
-            recording.save()
+        if course_ids:
+            # Get the corresponding courses based on provided IDs
+            courses = Courses.objects.filter(id__in=course_ids)
+            
+            # Assign the courses to the recording (ManyToMany)
+            recording.course.set(courses)
 
+            # Update the video count for each course added
+            for course in courses:
+                course.videosCount += 1
+                course.save()
+
+        # Save the recording with courses assigned
+        recording.save()
         return recording
+
+    # def create(self, validated_data):
+    #     courseId = validated_data.pop('addRecordingList', [])
+    #     recording = Recordings.objects.create(**validated_data)
+
+    #     if courseId:
+    #         courses = Courses.objects.filter(id__in=courseId).first()  # Get courses by IDs
+    #         if courses:
+    #             recording.course = courses  # Assign multiple courses
+    #         # Increment videosCount for each assigned course
+    #             # for course in :
+    #             courses.videosCount += 1
+    #             courses.save()
+    #         # else:
+    #         #     recording.status = "unassigned"
+    #         recording.save()
+
+    #     return recording
+    
+
     
 
     # def update(instance, validated_data):
