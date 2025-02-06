@@ -360,10 +360,15 @@ def helperFunction(meeting_id):
 from django.shortcuts import get_object_or_404
 from django.db.models import F
 from django.db.models import ManyToManyField
+from users.permissions import IsModeratorOrInstructor 
+from rest_framework.permissions import IsAuthenticated
 
 
 
 class RecordingsView(APIView):
+
+    permission_classes = [IsAuthenticated, IsModeratorOrInstructor] 
+
     
     def get(self, request, *args, **kwargs):
         pk = kwargs.get("pk")  # Check if 'pk' is provided in the URL

@@ -13,7 +13,7 @@ from datetime import datetime
 from django.db.models import Q
 from students.models import Enrollment
 from rest_framework.permissions import IsAuthenticated
-from users.permissions import IsModerator
+from users.permissions import IsModeratorOrInstructor 
 
 
 
@@ -131,7 +131,7 @@ from users.permissions import IsModerator
 
 class CourseView(APIView):
 
-    permission_classes = [IsAuthenticated, IsModerator] 
+    permission_classes = [IsAuthenticated, IsModeratorOrInstructor] 
 
     def get(self, request, pk=None):
         try:
@@ -427,7 +427,7 @@ from django.http import JsonResponse
 
 class CourseDropdownListView(APIView):
 
-    permission_classes = [IsAuthenticated, IsModerator] 
+    permission_classes = [IsAuthenticated, IsModeratorOrInstructor] 
 
     def get(self, request):
         # Fetch all courses and their ids
@@ -438,7 +438,7 @@ class CourseDropdownListView(APIView):
     
 class InstructorListView(APIView):
 
-    permission_classes = [IsAuthenticated, IsModerator] 
+    permission_classes = [IsAuthenticated, IsModeratorOrInstructor] 
 
     def get(self, request):
         # Fetch instructors from Courses model
