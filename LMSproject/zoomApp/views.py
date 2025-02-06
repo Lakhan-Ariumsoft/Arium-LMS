@@ -527,61 +527,6 @@ class RecordingsView(APIView):
                 "error": str(e)
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-   
-    # def put(self, request, *args, **kwargs):
-    #     pk = kwargs.get("pk")  # Get 'pk' from kwargs
-    #     recording = get_object_or_404(Recordings, pk=pk)
-
-    #     #  Extract fields to update (only those present in request)
-    #     update_fields = {}
-    #     if "meeting_id" in request.data:
-    #         update_fields["meeting_id"] = request.data["meeting_id"]
-    #     if "title" in request.data:
-    #         update_fields["title"] = request.data["title"]
-    #     if "recording_url" in request.data:
-    #         update_fields["recording_url"] = request.data["recording_url"]
-    #     if "duration" in request.data:
-    #         update_fields["duration"] = request.data["duration"]
-
-    #     #  Apply partial updates only if fields are provided
-    #     for field, value in update_fields.items():
-    #         setattr(recording, field, value)
-
-    #     #  Handle courses
-    #     add_course_ids = set(request.data.get("addRecordingList", []))  # Courses to add
-    #     remove_course_ids = set(request.data.get("removeRecordingList", []))  # Courses to remove
-
-    #     if add_course_ids:
-    #         existing_course_ids = set(recording.course.values_list("id", flat=True))
-    #         new_courses_to_add = Courses.objects.filter(id__in=add_course_ids - existing_course_ids)
-
-    #         recording.course.add(*new_courses_to_add)  # ✅ Add only new courses
-
-    #         # ✅ Update video counts for added courses
-    #         for course in new_courses_to_add:
-    #             course.videosCount += 1
-    #             course.save()
-
-    #     if remove_course_ids:
-    #         courses_to_remove = recording.course.filter(id__in=remove_course_ids)
-
-    #         recording.course.remove(*courses_to_remove)  # ✅ Remove courses
-
-    #         # ✅ Update video counts for removed courses
-    #         for course in courses_to_remove:
-    #             course.videosCount = max(0, course.videosCount - 1)
-    #             course.save()
-
-    #     # ✅ Save the recording only if any field was updated
-    #     if update_fields or add_course_ids or remove_course_ids:
-    #         recording.save()
-
-    #     return Response({
-    #         "status": True,
-    #         "message": "Recording updated successfully.",
-    #         "updated_fields": update_fields,
-    #         "updated_courses": list(recording.course.values_list("id", flat=True))  # Return updated course IDs
-    #     }, status=status.HTTP_200_OK)
     
     def put(self, request, *args, **kwargs):
         pk = kwargs.get("pk")  # Get 'pk' from kwargs
@@ -648,11 +593,22 @@ class RecordingsView(APIView):
     def delete(self, request, pk):
         try:
             recording = Recordings.objects.get(id=pk)
-            if recording.course:
-                recording.course.videosCount -= 1
-                recording.course.save()
+            
+            # Check if the recording is assigned to a course
+            if recording.course.exists():  # This checks if there is any course related to the recording
+                # Get the first related course (assuming only one course is related, adjust as needed)
+                course = recording.course.first()
+
+                # Update the videosCount field of the course
+                if course:
+                    course.videosCount -= 1
+                    course.save()
+            
+            # Delete the recording
             recording.delete()
+
             return Response({"status": True, "message": "Recording deleted successfully."}, status=status.HTTP_204_NO_CONTENT)
+        
         except Recordings.DoesNotExist:
             return Response({"status": False, "message": "Recording not found."}, status=status.HTTP_404_NOT_FOUND)
 
