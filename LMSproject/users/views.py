@@ -194,29 +194,50 @@ class InstructorListCreateView(generics.ListCreateAPIView):
                 paginated_instructors = paginator.page(paginator.num_pages)
 
             instructor_data = []
+
             for instructor in paginated_instructors:
                 assigned_courses = instructor.assigned_courses.all()
-                
-                course_data = [
-                    {
+
+                for course in assigned_courses:
+                    instructor_data.append({
+                        "instructorId": instructor.id,
+                        "name": f"{instructor.firstname} {instructor.lastname}",
+                        "email": instructor.email,
+                        "phone": instructor.phone,
+                        "countryCode": instructor.countryCode,
+                        "courseId" : course.id,
                         "course_name": course.courseName,
                         "start_date": course.created_at.isoformat() if course.created_at else "",
-                        "videosCount" : course.videosCount if course.videosCount else 0
-                        # "end_date": course.endDate.isoformat() if course.endDate else "",
-                    }
-                    for course in assigned_courses
-                ]
+                        "videosCount": course.videosCount if course.videosCount else 0,
+                        "joinedOn": instructor.created_at.isoformat() if instructor.created_at else ""
+                    })
 
-                print(course_data)
-                instructor_data.append({
-                    "id": instructor.id,
-                    "name": f"{instructor.firstname} {instructor.lastname}",
-                    "email": instructor.email,
-                    "phone": instructor.phone,
-                    "countryCode" : instructor.countryCode,
-                    "assigned_courses": course_data,
-                    "joinedOn": instructor.created_at
-                })
+
+
+            # instructor_data = []
+            # for instructor in paginated_instructors:
+            #     assigned_courses = instructor.assigned_courses.all()
+                
+            #     course_data = [
+            #         {
+            #             "course_name": course.courseName,
+            #             "start_date": course.created_at.isoformat() if course.created_at else "",
+            #             "videosCount" : course.videosCount if course.videosCount else 0
+            #             # "end_date": course.endDate.isoformat() if course.endDate else "",
+            #         }
+            #         for course in assigned_courses
+            #     ]
+
+            #     print(course_data)
+            #     instructor_data.append({
+            #         "id": instructor.id,
+            #         "name": f"{instructor.firstname} {instructor.lastname}",
+            #         "email": instructor.email,
+            #         "phone": instructor.phone,
+            #         "countryCode" : instructor.countryCode,
+            #         "assigned_courses": course_data,
+            #         "joinedOn": instructor.created_at
+            #     })
 
             response = {
                 "status": True,

@@ -55,35 +55,59 @@ def get_paginated_students(request, students_queryset):
             # If the page is out of range, return an empty result
             paginated_students = []
 
-        # Prepare student data
         student_data = []
+
         for student in paginated_students:
             enrollments = Enrollment.objects.filter(student=student)
             student_serializer = StudentsSerializer(student)
 
-            enrolled_courses = []
-
             for enrollment in enrollments:
-                enrolled_courses.append({
+                student_data.append({
+                    "studentId": student.id,
+                    "name": f"{student.firstname} {student.lastname}",
+                    "countryCode": student.countryCode if student.countryCode else "",
+                    "phone": student.phone,
+                    "email": student.email,
+                    "dob": student.dob.strftime("%Y-%m-%d") if student.dob else "",
+                    "enrollmentId" : enrollment.id,
                     "course": enrollment.courses.courseName,
                     "start_date": enrollment.enrollmentDate.isoformat() if enrollment.enrollmentDate else "",
                     "end_date": enrollment.expiryDate.isoformat() if enrollment.expiryDate else "",
-                    "status" : enrollment.status
+                    "status": enrollment.status
                 })
 
-            print(f"ID: {student.id}, Name: {student.firstname} {student.lastname}, DOB: {student.dob}, Country Code: {student.countryCode}")
+# Now `student_data` will contain separate entries for each enrolled course.
 
 
-            student_data.append({
-                "_id": student.id,
-                "name": f"{student.firstname} {student.lastname}",
-                "countryCode":  student.countryCode if student.countryCode else "",
-                "phone": student.phone,
-                "email": student.email,
-                "dob" : student.dob.strftime("%Y-%m-%d") if student.dob else "",
-                # "status": student.status,
-                "enrolled_courses": enrolled_courses,
-            })
+        # Prepare student data
+        # student_data = []
+        # for student in paginated_students:
+        #     enrollments = Enrollment.objects.filter(student=student)
+        #     student_serializer = StudentsSerializer(student)
+
+        #     enrolled_courses = []
+
+        #     for enrollment in enrollments:
+        #         enrolled_courses.append({
+        #             "course": enrollment.courses.courseName,
+        #             "start_date": enrollment.enrollmentDate.isoformat() if enrollment.enrollmentDate else "",
+        #             "end_date": enrollment.expiryDate.isoformat() if enrollment.expiryDate else "",
+        #             "status" : enrollment.status
+        #         })
+
+        #     print(f"ID: {student.id}, Name: {student.firstname} {student.lastname}, DOB: {student.dob}, Country Code: {student.countryCode}")
+
+
+        #     student_data.append({
+        #         "_id": student.id,
+        #         "name": f"{student.firstname} {student.lastname}",
+        #         "countryCode":  student.countryCode if student.countryCode else "",
+        #         "phone": student.phone,
+        #         "email": student.email,
+        #         "dob" : student.dob.strftime("%Y-%m-%d") if student.dob else "",
+        #         # "status": student.status,
+        #         "enrolled_courses": enrolled_courses,
+        #     })
 
         # Return paginated response
         response = {
@@ -370,53 +394,55 @@ class StudentsDetailAPIView(APIView):
         except Exception as e:
             return Response({"error": f"An unexpected error occurred: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-    def delete(self, request, pk=None):
+
+    def delete(self, request, student_id=None, enrollment_id=None):
         try:
             with transaction.atomic():
                 # Fetch the student instance
                 try:
-                    student = Students.objects.get(pk=pk)
+                    student = Students.objects.get(pk=student_id)
                 except Students.DoesNotExist:
                     return Response(
                         {"success": False, "message": "Student not found."},
                         status=status.HTTP_404_NOT_FOUND
                     )
 
-                # Fetch all enrollments of the student
-                enrollments = Enrollment.objects.filter(student=student)
+                # Fetch the specific enrollment
+                try:
+                    enrollment = Enrollment.objects.get(pk=enrollment_id, student=student)
+                except Enrollment.DoesNotExist:
+                    return Response(
+                        {"success": False, "message": "Enrollment not found for this student."},
+                        status=status.HTTP_404_NOT_FOUND
+                    )
 
-                # If student has no enrollments, deactivate the user and delete student record
-                if not enrollments.exists():
+                # Get associated course and decrease student count
+                course = enrollment.courses
+                if course.studentsCount > 0:  # Prevent negative count
+                    course.studentsCount -= 1
+                    course.save(update_fields=["studentsCount"])
+
+                # Delete the specific enrollment
+                enrollment.delete()
+
+                # Check if student is still enrolled in any course
+                remaining_enrollments = Enrollment.objects.filter(student=student).exists()
+
+                if not remaining_enrollments:
+                    # If no enrollments remain, deactivate user and delete student
                     if hasattr(student, "user") and student.user:
                         student.user.is_active = False
                         student.user.save(update_fields=["is_active"])
 
                     student.delete()
+
                     return Response(
                         {"success": True, "message": "Student deleted as no enrollments were found."},
                         status=status.HTTP_200_OK
                     )
 
-                # Iterate through enrollments and update course student count
-                for enrollment in enrollments:
-                    course = enrollment.courses
-                    if course.studentsCount > 0:  # Prevent negative count
-                        course.studentsCount -= 1
-                        course.save(update_fields=["studentsCount"])
-
-                # Delete enrollments
-                enrollments.delete()
-
-                # Double-check if student is still enrolled anywhere
-                if not Enrollment.objects.filter(student=student).exists():
-                    if hasattr(student, "user") and student.user:
-                        student.user.is_active = False
-                        student.user.save(update_fields=["is_active"])
-
-                    student.delete()
-
                 return Response(
-                    {"success": True, "message": "Student deleted successfully."},
+                    {"success": True, "message": "Enrollment deleted successfully."},
                     status=status.HTTP_200_OK
                 )
 
@@ -424,7 +450,62 @@ class StudentsDetailAPIView(APIView):
             return Response(
                 {"success": False, "message": f"An unexpected error occurred: {str(e)}"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
+        )
+    # def delete(self, request, pk=None):
+    #     try:
+    #         with transaction.atomic():
+    #             # Fetch the student instance
+    #             try:
+    #                 student = Students.objects.get(pk=pk)
+    #             except Students.DoesNotExist:
+    #                 return Response(
+    #                     {"success": False, "message": "Student not found."},
+    #                     status=status.HTTP_404_NOT_FOUND
+    #                 )
+
+    #             # Fetch all enrollments of the student
+    #             enrollments = Enrollment.objects.filter(student=student)
+
+    #             # If student has no enrollments, deactivate the user and delete student record
+    #             if not enrollments.exists():
+    #                 if hasattr(student, "user") and student.user:
+    #                     student.user.is_active = False
+    #                     student.user.save(update_fields=["is_active"])
+
+    #                 student.delete()
+    #                 return Response(
+    #                     {"success": True, "message": "Student deleted as no enrollments were found."},
+    #                     status=status.HTTP_200_OK
+    #                 )
+
+    #             # Iterate through enrollments and update course student count
+    #             for enrollment in enrollments:
+    #                 course = enrollment.courses
+    #                 if course.studentsCount > 0:  # Prevent negative count
+    #                     course.studentsCount -= 1
+    #                     course.save(update_fields=["studentsCount"])
+
+    #             # Delete enrollments
+    #             enrollments.delete()
+
+    #             # Double-check if student is still enrolled anywhere
+    #             if not Enrollment.objects.filter(student=student).exists():
+    #                 if hasattr(student, "user") and student.user:
+    #                     student.user.is_active = False
+    #                     student.user.save(update_fields=["is_active"])
+
+    #                 student.delete()
+
+    #             return Response(
+    #                 {"success": True, "message": "Student deleted successfully."},
+    #                 status=status.HTTP_200_OK
+    #             )
+
+    #     except Exception as e:
+    #         return Response(
+    #             {"success": False, "message": f"An unexpected error occurred: {str(e)}"},
+    #             status=status.HTTP_500_INTERNAL_SERVER_ERROR
+    #         )
 
         
     # def delete(self, request, pk=None):

@@ -337,18 +337,26 @@ def helperFunction(meeting_id):
 
                         # Save Zoom meeting details to the database
                         try:
-                            # Find or create the course based on the course name extracted from the meeting topic
+                            # Find the course based on the course name
                             course = Courses.objects.filter(title=course_name).first()
-                            Recordings.objects.create(
-                                course=course,
+
+                            # Create a new recording entry
+                            recording = Recordings.objects.create(
                                 title=meeting_topic,
                                 meeting_id=meeting_id,
                                 duration=recording.get("duration", 0),  # Assuming duration is available
                                 recording_url=file_url
                             )
-                            print(f"Zoom meeting '{meeting_topic}' added to database.")
+
+                            # If a course is found, associate it with the recording
+                            if course:
+                                recording.course.add(course)  # Correct way to set ManyToManyField
+                                course.videosCount = course.videosCount + 1  # Increment videoCount
+                                course.save(update_fields=["videosCount"])
+
+                            print(f"Recording '{meeting_topic}' added to database.")
                         except IntegrityError as e:
-                            print(f"Integrity error while saving Zoom meeting: {e}")
+                            print(f"Integrity error while saving Recording: {e}")
                     else:
                         raise Exception(f"Failed to download file from Zoom. Status Code: {response.status_code}")
                 except Exception as e:
