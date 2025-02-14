@@ -206,8 +206,8 @@ class InstructorListCreateView(generics.ListCreateAPIView):
                         "phone": instructor.phone,
                         "countryCode": instructor.countryCode,
                         "courseId" : course.id,
-                        "course_name": course.courseName,
-                        "start_date": course.created_at.isoformat() if course.created_at else "",
+                        "courseName": course.courseName,
+                        "startDate": course.created_at.isoformat() if course.created_at else "",
                         "videosCount": course.videosCount if course.videosCount else 0,
                         "joinedOn": instructor.created_at.isoformat() if instructor.created_at else ""
                     })
