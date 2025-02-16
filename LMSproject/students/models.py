@@ -18,7 +18,7 @@ class Students(models.Model):
     lastname = models.CharField(max_length=50)
     email = models.EmailField(unique=True)
     countryCode = models.CharField(max_length=10, blank=True)
-    phone = models.CharField(max_length=15, blank=True)
+    phone = models.CharField(max_length=15, blank=True ,unique=True)
     dob = models.DateField(verbose_name="Date of Birth", blank=True, null=True)
     address = models.TextField(blank=True, null=True)
     batch = models.CharField(max_length=50, default="", blank=True)
@@ -57,24 +57,24 @@ def update_enrollment_status(sender, instance, **kwargs):
     if instance.expiryDate and instance.expiryDate < now().date():
         instance.status = 'expired'
 
-@receiver(post_save, sender=Enrollment)
-def deactivate_student_if_no_active_enrollments(sender, instance, **kwargs):
-    """Deactivate student if all enrollments are expired or cancelled."""
-    from django.contrib.auth import get_user_model
+# @receiver(post_save, sender=Enrollment)
+# def deactivate_student_if_no_active_enrollments(sender, instance, **kwargs):
+#     """Deactivate student if all enrollments are expired or cancelled."""
+#     from django.contrib.auth import get_user_model
 
-    User = get_user_model()
-    student = instance.student
+#     User = get_user_model()
+#     student = instance.student
 
-    # Check if the student has any active enrollments
-    active_enrollments = Enrollment.objects.filter(student=student, status='active').exists()
+#     # Check if the student has any active enrollments
+#     active_enrollments = Enrollment.objects.filter(student=student, status='active').exists()
 
-    try:
-        user = User.objects.get(email=student.email)
-        if not active_enrollments:
-            user.is_active = False
-            user.save()
-    except User.DoesNotExist:
-        pass  # If no user is found, skip deactivation
+#     try:
+#         user = User.objects.get(email=student.email)
+#         if not active_enrollments:
+#             user.is_active = False
+#             user.save()
+#     except User.DoesNotExist:
+#         pass  # If no user is found, skip deactivation
 
 
 
@@ -188,27 +188,27 @@ def handle_student_courses_update(sender, instance, created, **kwargs):
     
 
 # when student has last course enrolled and he is deleted so he should not be enrolled 
-@receiver(pre_delete, sender=Students)
-def handle_student_deletion(sender, instance, **kwargs):
-    """
-    Signal to handle the deletion of a student and check if the user is associated with other courses.
-    If the student is not enrolled in any other course, deactivate the user and delete the student record.
-    """
-    try:
-        # Get all enrollments for this student
-        enrollments = Enrollment.objects.filter(student=instance)
+# @receiver(pre_delete, sender=Students)
+# def handle_student_deletion(sender, instance, **kwargs):
+#     """
+#     Signal to handle the deletion of a student and check if the user is associated with other courses.
+#     If the student is not enrolled in any other course, deactivate the user and delete the student record.
+#     """
+#     try:
+#         # Get all enrollments for this student
+#         enrollments = Enrollment.objects.filter(student=instance)
         
-        if enrollments.exists():
-            # If student is enrolled in other courses, leave them active
-            enrollments.delete()
-        else:
-            # If the student is not enrolled in any other course, deactivate the user
-            user = instance.user  # Assuming Student has a relation with User model
-            user.is_active = False
-            user.save()
-            # Then delete the student record
-            instance.delete()
+#         if enrollments.exists():
+#             # If student is enrolled in other courses, leave them active
+#             enrollments.delete()
+#         else:
+#             # If the student is not enrolled in any other course, deactivate the user
+#             user = instance.user  # Assuming Student has a relation with User model
+#             user.is_active = False
+#             user.save()
+#             # Then delete the student record
+#             instance.delete()
 
-    except Exception as e:
-        # Catching any exception and returning a meaningful response
-        return JsonResponse({"error": f"An error occurred: {str(e)}"}, status=400)
+#     except Exception as e:
+#         # Catching any exception and returning a meaningful response
+#         return JsonResponse({"error": f"An error occurred: {str(e)}"}, status=400)

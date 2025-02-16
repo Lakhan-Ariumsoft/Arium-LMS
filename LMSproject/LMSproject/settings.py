@@ -90,7 +90,8 @@ CSRF_TRUSTED_ORIGINS = [
     'http://localhost:5175',
     'http://localhost:3001',
     'http://localhost:4000',
-    "http://35.207.238.34", 
+    "http://35.207.238.34",
+    "http://students.sreenidhimusicacademy.com" 
 
     # Add this line for local testing
 ]
@@ -98,8 +99,15 @@ CSRF_TRUSTED_ORIGINS = [
 
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:5173",
-    "http://35.207.238.34",  # Backend IP
+    "http://35.207.238.34",
+    "http://students.sreenidhimusicacademy.com"  # Backend IP
 ]
+
+
+SECURE_SSL_REDIRECT = True
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+
+
 
 
 # Database
@@ -173,7 +181,7 @@ REST_FRAMEWORK = {
 }
 
 SIMPLE_JWT = {
-    'ACCESS_TOKEN_LIFETIME': timedelta(days=7),
+    'ACCESS_TOKEN_LIFETIME': timedelta(days=1),
     'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
     'ROTATE_REFRESH_TOKENS': True,
     'BLACKLIST_AFTER_ROTATION': True,
