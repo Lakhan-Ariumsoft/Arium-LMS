@@ -91,7 +91,7 @@ CSRF_TRUSTED_ORIGINS = [
     'http://localhost:3001',
     'http://localhost:4000',
     "http://35.207.238.34",
-    "http://students.sreenidhimusicacademy.com" 
+    "https://lms.sreenidhimusicacademy.com" 
 
     # Add this line for local testing
 ]
@@ -100,7 +100,7 @@ CSRF_TRUSTED_ORIGINS = [
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:5173",
     "http://35.207.238.34",
-    "http://students.sreenidhimusicacademy.com"  # Backend IP
+    "https://lms.sreenidhimusicacademy.com"  # Backend IP
 ]
 
 
