@@ -1,5 +1,5 @@
 from django.urls import path
-from .views import LoginAPIView , LogoutAPIView  ,InstructorListCreateView, InstructorRetrieveUpdateDestroyView ,InstructorDashboardView # Import the LoginAPIView from your views.py
+from .views import LoginAPIView , LogoutAPIView  ,InstructorListCreateView, InstructorRetrieveUpdateDestroyView ,InstructorDashboardView , CheckPhoneView # Import the LoginAPIView from your views.py
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
 
@@ -12,7 +12,6 @@ urlpatterns = [
     path("instructors/", InstructorListCreateView.as_view(), name="instructor-list-create"),
     path("instructors/<int:pk>/", InstructorRetrieveUpdateDestroyView.as_view(), name="instructor-detail"),
     path("instructors/dashboard/", InstructorDashboardView.as_view(), name="dashboard"),
-
-
+    path('checkPhone/', CheckPhoneView.as_view(), name='check_phone'),
 
 ]

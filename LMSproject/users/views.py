@@ -713,3 +713,24 @@ class InstructorDashboardView(APIView):
                 {"status": False, "message": f"An error occurred: {str(e)}"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
+
+
+class CheckPhoneView(APIView):
+
+    authentication_classes = []  # No authentication required
+    permission_classes = [AllowAny] 
+
+    def post(self, request):
+        countryCode = request.data.get('countryCode')
+        phone = request.data.get('phone')
+        print(countryCode , phone)
+        # Validate the input
+        if not countryCode or not phone:
+            return Response({'status': False, 'message': 'Country code and phone are required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Try to find the user with the given country code and phone, and check if the user is active
+        try:
+            user = User.objects.get(countryCode=countryCode, phone=phone, is_active=True)
+            return Response({'status': True, 'message': 'Phone registered and active'})
+        except User.DoesNotExist:
+            return Response({'status': False, 'message': 'Phone not registered or inactive'}, status=status.HTTP_404_NOT_FOUND)
