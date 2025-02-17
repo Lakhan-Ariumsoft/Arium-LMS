@@ -91,7 +91,10 @@ CSRF_TRUSTED_ORIGINS = [
     'http://localhost:3001',
     'http://localhost:4000',
     "http://35.207.238.34",
+    "http://lms.sreenidhimusicacademy.com",
     "https://lms.sreenidhimusicacademy.com" 
+
+
 
     # Add this line for local testing
 ]
@@ -100,12 +103,17 @@ CSRF_TRUSTED_ORIGINS = [
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:5173",
     "http://35.207.238.34",
-    "https://lms.sreenidhimusicacademy.com"  # Backend IP
+    "http://lms.sreenidhimusicacademy.com" ,# Backend IP
+    "https://lms.sreenidhimusicacademy.com" 
+
 ]
 
 
-SECURE_SSL_REDIRECT = True
-SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+
+SECURE_SSL_REDIRECT = False
+# SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+# CSRF_COOKIE_SECURE = True
+# SESSION_COOKIE_SECURE = True
 
 
 
