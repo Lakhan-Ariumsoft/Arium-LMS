@@ -303,6 +303,7 @@ def helperFunction(meeting_id):
         for recording in recordings:
             if recording.get("file_type") == "MP4":
                 file_url = recording["download_url"]
+                playURL = recording['play_url']
                 recording_id = recording["id"]
                 start_time = recording.get("recording_start", "unknown_start").replace(":", "_").replace("T", "_")
                 file_name = f"{meeting_topic}_{recording_id}_{start_time}.mp4"
@@ -338,14 +339,13 @@ def helperFunction(meeting_id):
                         # Save Zoom meeting details to the database
                         try:
                             # Find the course based on the course name
-                            course = Courses.objects.filter(title=course_name).first()
-
+                            course = Courses.objects.filter(courseName=course_name).first()
                             # Create a new recording entry
                             recording = Recordings.objects.create(
                                 title=meeting_topic,
                                 meeting_id=meeting_id,
                                 duration=recording.get("duration", 0),  # Assuming duration is available
-                                recording_url=file_url
+                                recording_url=playURL
                             )
 
                             # If a course is found, associate it with the recording
