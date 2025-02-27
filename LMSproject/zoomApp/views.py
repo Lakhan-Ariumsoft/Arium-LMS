@@ -316,16 +316,23 @@ def helperFunction(meeting_id):
                     start_dt = datetime.fromisoformat(start_timestamp.replace("Z", ""))
                     end_dt = datetime.fromisoformat(end_timestamp.replace("Z", ""))
                     
-                    # Calculate duration in minutes (rounded)
-                    duration_mins = round((end_dt - start_dt).total_seconds() / 60, 2)
+                    # Calculate total duration in seconds
+                    total_seconds = int((end_dt - start_dt).total_seconds())
+
+                    # Convert to hours, minutes, and seconds
+                    hours, remainder = divmod(total_seconds, 3600)
+                    minutes, seconds = divmod(remainder, 60)
+
+                    # Format as hh:mm:ss
+                    duration_str = f"{hours:02}:{minutes:02}:{seconds:02}"
                 else:
-                    duration_mins = " "
+                    duration_str = " "
 
                 # Generate filename
 
                 print(f"Video URL: {file_url}")
                 print(f"Formatted Start Time: {start_time}")
-                print(f"Duration: {duration_mins} minutes")
+                print(f"Duration: {duration_str} minutes")
                 
 
 
@@ -368,7 +375,7 @@ def helperFunction(meeting_id):
                             recording = Recordings.objects.create(
                                 title=meeting_topic,
                                 meeting_id=meeting_id,
-                                duration=duration_mins,  # Assuming duration is available
+                                duration=duration_str,  # Assuming duration is available
                                 recording_url=publicUrl
                             )
 

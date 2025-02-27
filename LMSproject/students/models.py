@@ -34,7 +34,9 @@ class Enrollment(models.Model):
     STATUS_CHOICES = [
         ('active', 'Active'),
         ('expired', 'Expired'),
-        ('cancelled', 'Cancelled')
+        ('cancelled', 'Cancelled'),
+        ('completed', 'Completed'),
+
     ]
     student = models.ForeignKey(Students, on_delete=models.CASCADE)
     courses = models.ForeignKey(Courses, on_delete=models.CASCADE)  # ForeignKey to Courses
@@ -42,7 +44,7 @@ class Enrollment(models.Model):
     expiryDate = models.DateField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='active')
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='Active')
 
 
     def __str__(self):
