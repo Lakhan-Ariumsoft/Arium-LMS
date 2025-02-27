@@ -146,9 +146,6 @@ class StudentsListCreateAPIView(APIView):
     def get(self, request):
         try:
 
-            # if not request.user.role or request.user.role.name != "moderator":
-            #     return JsonResponse({"error": "Permission denied"}, status=403)
-            # Get query parameters for filtering
             search_text = request.query_params.get('searchText', None)
             search_course = request.query_params.get('searchCourse', None)
             search_status = request.query_params.get('searchStatus', None)
@@ -171,38 +168,18 @@ class StudentsListCreateAPIView(APIView):
 
 
             if search_status:
-                query &= Q(status__icontains=search_status)
+                query &= Q(enrollment__status__icontains=search_status)  
 
             # Filter students based on the query
             students_queryset = Students.objects.filter(query).distinct().order_by('id')
 
             # Case 1: No students in the database
             if not Students.objects.exists():
-            
-                # response_data = {
-                #     "status": True,
-                #     "message": "No records found in the database." if paginated_students else "No search record found.",
-                #     "data":StudentsSerializer(paginated_students, many=True).data,  # Assuming `to_dict` exists
-                #     "total": total_records,
-                #     "limit": limit,
-                #     "page": page,
-                #     "pages": total_pages
-                # }
-
                 return Response({"status" : True ,"message": "No records found in the database.","data" : [] , "total" : 0 , "page":1 , "pages":1}, status=status.HTTP_404_NOT_FOUND)
             
             # Case 2: Query parameter provided but no matching records found
             if search_text or search_course or search_status:
                 if not students_queryset.exists():
-                    # query_params = []
-                    # if search_text:
-                    #     query_params.append(f"'{search_text}'")
-                    # if search_course:
-                    #     query_params.append(f"'{search_course}'")
-                    # if search_status:
-                    #     query_params.append(f"'{search_status}'")
-
-                    # query_msg = ", ".join(query_params)
                     return Response({"status" : True ,"message": "No search data found","data": [] , "total" : 0 , "page":1 , "pages":1}, status=status.HTTP_404_NOT_FOUND)
                 
 

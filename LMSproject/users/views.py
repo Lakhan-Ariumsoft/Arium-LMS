@@ -123,9 +123,15 @@ class LogoutAPIView(APIView):
 
 
 
-
-
+    
+from django.contrib.auth.models import User  # Import the User model
+from django.db import transaction
+from rest_framework.response import Response
+from rest_framework import status
+from .models import Instructor  # Ensure you import the Instructor model
+from .serializers import InstructorSerializer  # Import your serializer
 from rest_framework import generics, status
+from django.contrib.auth.models import User
 from rest_framework.response import Response
 from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
 from django.db.models import Q
@@ -213,32 +219,6 @@ class InstructorListCreateView(generics.ListCreateAPIView):
                     })
 
 
-
-            # instructor_data = []
-            # for instructor in paginated_instructors:
-            #     assigned_courses = instructor.assigned_courses.all()
-                
-            #     course_data = [
-            #         {
-            #             "course_name": course.courseName,
-            #             "start_date": course.created_at.isoformat() if course.created_at else "",
-            #             "videosCount" : course.videosCount if course.videosCount else 0
-            #             # "end_date": course.endDate.isoformat() if course.endDate else "",
-            #         }
-            #         for course in assigned_courses
-            #     ]
-
-            #     print(course_data)
-            #     instructor_data.append({
-            #         "id": instructor.id,
-            #         "name": f"{instructor.firstname} {instructor.lastname}",
-            #         "email": instructor.email,
-            #         "phone": instructor.phone,
-            #         "countryCode" : instructor.countryCode,
-            #         "assigned_courses": course_data,
-            #         "joinedOn": instructor.created_at
-            #     })
-
             response = {
                 "status": True,
                 "message": "Fetched successfully.",
@@ -295,6 +275,8 @@ class InstructorListCreateView(generics.ListCreateAPIView):
                 "pages": 1
             }
             return Response(response_data, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
 
     def create(self, request, *args, **kwargs):
         try:
