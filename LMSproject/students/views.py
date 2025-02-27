@@ -13,18 +13,11 @@ from django.contrib.auth import get_user_model
 from datetime import datetime
 from rest_framework.response import Response
 from rest_framework import status
-from django.db.models import Q
-from django.core.paginator import Paginator, PageNotAnInteger, EmptyPage
 
-from django.db.models import Q
-from rest_framework.response import Response
-from rest_framework import status
-from math import ceil
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from rest_framework import status
-from django.db.models import Q
 from .models import Students, Enrollment
 from zoomApp.models import Recordings
 from courses.models import Courses
@@ -267,14 +260,18 @@ class StudentsListCreateAPIView(APIView):
                                 )
 
                             # Convert date strings to datetime.date objects
-                            enrollment_date = enrollment.get("enrollmentDate")
-                            expiry_date = enrollment.get("expiryDate")
+                            enrollment_date = enrollment.get("enrollmentDate" , None)
+                            expiry_date = enrollment.get("expiryDate",None)
 
                             if enrollment_date:
                                 enrollment_date = datetime.strptime(enrollment_date, "%Y-%m-%d").date()
+                            else:
+                                enrollment_date = None
 
                             if expiry_date:
                                 expiry_date = datetime.strptime(expiry_date, "%Y-%m-%d").date()
+                            else:
+                                expiry_date = None  
 
                             # Create enrollment
                             Enrollment.objects.create(
