@@ -265,7 +265,6 @@ def zoom_webhook(request):
     return JsonResponse({"error": "Invalid method"}, status=400)
 
 
-
 def helperFunction(meeting_id):
     """Process and upload recordings for a given meeting ID."""
     try:
@@ -303,11 +302,32 @@ def helperFunction(meeting_id):
         for recording in recordings:
             if recording.get("file_type") == "MP4":
                 file_url = recording["download_url"]
-                playURL = recording['play_url']
                 recording_id = recording["id"]
                 start_time = recording.get("recording_start", "unknown_start").replace(":", "_").replace("T", "_")
                 file_name = f"{meeting_topic}_{recording_id}_{start_time}.mp4"
                 file_path = f"{meeting_folder}/{file_name}"  # Path in the bucket
+
+                # Get recording start and end timestamps
+                start_timestamp = recording.get("recording_start")
+                end_timestamp = recording.get("recording_end")
+
+                if start_timestamp and end_timestamp:
+                    # Convert strings to datetime objects
+                    start_dt = datetime.fromisoformat(start_timestamp.replace("Z", ""))
+                    end_dt = datetime.fromisoformat(end_timestamp.replace("Z", ""))
+                    
+                    # Calculate duration in minutes (rounded)
+                    duration_mins = round((end_dt - start_dt).total_seconds() / 60, 2)
+                else:
+                    duration_mins = " "
+
+                # Generate filename
+
+                print(f"Video URL: {file_url}")
+                print(f"Formatted Start Time: {start_time}")
+                print(f"Duration: {duration_mins} minutes")
+                
+
 
                 # Check if the file already exists and is uploaded
                 blob = bucket.blob(file_path)
@@ -335,17 +355,21 @@ def helperFunction(meeting_id):
                         # Update metadata to mark upload as complete
                         blob.metadata = {"status": "uploaded", "meeting_id": meeting_id}
                         blob.patch()
-
+                        try:
+                            publicUrl = blob.public_url
+                        except:
+                            publicUrl = ""
                         # Save Zoom meeting details to the database
                         try:
+
                             # Find the course based on the course name
                             course = Courses.objects.filter(courseName=course_name).first()
                             # Create a new recording entry
                             recording = Recordings.objects.create(
                                 title=meeting_topic,
                                 meeting_id=meeting_id,
-                                duration=recording.get("duration", 0),  # Assuming duration is available
-                                recording_url=playURL
+                                duration=duration_mins,  # Assuming duration is available
+                                recording_url=publicUrl
                             )
 
                             # If a course is found, associate it with the recording
