@@ -40,6 +40,6 @@ class EnrollmentAdmin(admin.ModelAdmin):
 
 @admin.register(Courses)
 class CoursesAdmin(admin.ModelAdmin):
-    list_display = ('courseName', 'instructorName', 'studentsCount', 'videosCount', 'created_at', 'updated_at')
+    list_display = ('courseName', 'studentsCount', 'videosCount', 'created_at', 'updated_at')
     list_filter = ('created_at', 'updated_at')
-    search_fields = ('courseName', 'instructorName')
+    search_fields = ('courseName',)

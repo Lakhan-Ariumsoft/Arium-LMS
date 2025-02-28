@@ -324,8 +324,9 @@ class InstructorListCreateView(generics.ListCreateAPIView):
 
                 with transaction.atomic():  # Ensures rollback on failure
                     instructor = serializer.save()
-                    if assigned_courses:
+                    if assigned_courses:                                                           
                         instructor.assigned_courses.set(assigned_courses)
+                        Courses.objects.filter(id__in=assigned_courses).update(instructor=instructor)
 
                     response = {"status": True, "message": "Instructor added successfully."}
                     return Response(response, status=status.HTTP_201_CREATED)
@@ -470,7 +471,17 @@ class InstructorRetrieveUpdateDestroyView(generics.RetrieveUpdateDestroyAPIView)
             instance = self.get_object()
             serializer = self.serializer_class(instance, data=request.data, partial=True)
             if serializer.is_valid():
-                serializer.save()
+                assigned_courses = request.data.get('assigned_courses', [])
+                # serializer.save()
+
+                with transaction.atomic():
+                    instructor = serializer.save()
+
+                    # Remove instructor from courses not in the new list
+                    # Courses.objects.filter(instructor=instructor).exclude(id__in=assigned_courses).update(instructor=None)
+
+                    # Assign instructor to newly assigned courses
+                    Courses.objects.filter(id__in=assigned_courses).update(instructor=instructor)
                 response = {
                     "status": True,
                     "message": "Instructor updated successfully."
@@ -494,7 +505,14 @@ class InstructorRetrieveUpdateDestroyView(generics.RetrieveUpdateDestroyAPIView)
     def destroy(self, request, *args, **kwargs):
         try:
             instance = self.get_object()
-            instance.delete()
+            # instance.delete()
+
+            with transaction.atomic():
+                # Remove instructor from all assigned courses before deletion
+                Courses.objects.filter(instructor=instance).update(instructor=None)
+
+                instance.delete()
+
             response = {"status": True, "message": "Instructor deleted successfully."}
             return Response(response, status=status.HTTP_200_OK)  # Changed from 204 to 200
         except ObjectDoesNotExist:

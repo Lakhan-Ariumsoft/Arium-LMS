@@ -22,8 +22,8 @@ class CourseView(APIView):
 
     def get(self, request, pk=None):
         try:
-            # Check for a single course retrieval
-            if pk: 
+            # Fetch single course
+            if pk:
                 try:
                     course = Courses.objects.get(pk=pk)
                     serializer = CourseSerializer(course)
@@ -48,22 +48,24 @@ class CourseView(APIView):
                         'pages': 1
                     }, status=status.HTTP_404_NOT_FOUND)
 
-            # Listing and filtering courses
+            # Fetch all courses
             courses = Courses.objects.all()
 
+            # Search by text (course name or instructor name)
             search_text = request.query_params.get('searchText', None)
             if search_text:
                 courses = courses.filter(
                     Q(courseName__icontains=search_text) |
-                    Q(instructorName__icontains=search_text) |
-                    Q(created_at__date__icontains=search_text) |  # Search by date part of created_at
-                    Q(updated_at__date__icontains=search_text)   # Search by date part of updated_at
+                    Q(instructor__firstname__icontains=search_text) |
+                    Q(instructor__lastname__icontains=search_text)
                 )
 
-            search_instructor = request.query_params.get('searchInstructor', None)
-            if search_instructor:
-                courses = courses.filter(instructorName__icontains=search_instructor)
+            # Search by Instructor ID
+            instructor_id = request.query_params.get('instructorId', None)
+            if instructor_id:
+                courses = courses.filter(instructor_id=instructor_id)
 
+            # Filter by date range
             date_range = request.query_params.get('dateRange', None)
             if date_range:
                 try:
@@ -82,15 +84,15 @@ class CourseView(APIView):
             # Pagination
             limit = int(request.query_params.get('limit', 10))
             page_number = int(request.query_params.get('page', 1))
-            
-            paginator = Paginator(courses.order_by('id'), limit)  # Use filtered courses queryset
+
+            paginator = Paginator(courses.order_by('-created_at'), limit)
             page_obj = paginator.get_page(page_number)
 
             serializer = CourseSerializer(page_obj, many=True)
 
             response_data = {
-                'status': True if paginator.count > 0 else False,
-                'message': 'Courses fetched successfully.' if paginator.count > 0 else 'No Search data found.',
+                'status': paginator.count > 0,
+                'message': 'Courses fetched successfully.' if paginator.count > 0 else 'No search data found.',
                 'data': serializer.data,
                 'total': paginator.count,
                 'limit': limit,
@@ -111,6 +113,98 @@ class CourseView(APIView):
                 'page': 1,
                 'pages': 1
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    # def get(self, request, pk=None):
+    #     try:
+    #         # Check for a single course retrieval
+    #         if pk: 
+    #             try:
+    #                 course = Courses.objects.get(pk=pk)
+    #                 serializer = CourseSerializer(course , many=True)
+    #                 response_data = {
+    #                     'status': True,
+    #                     'message': f'Course {course.courseName} fetched.',
+    #                     'data': serializer.data,
+    #                     'total': 1,
+    #                     'limit': 1,
+    #                     'page': 1,
+    #                     'pages': 1
+    #                 }
+    #                 return Response(response_data, status=status.HTTP_200_OK)
+    #             except Courses.DoesNotExist:
+    #                 return Response({
+    #                     'status': False,
+    #                     'message': 'Course not found.',
+    #                     'data': [],
+    #                     'total': 0,
+    #                     'limit': 1,
+    #                     'page': 1,
+    #                     'pages': 1
+    #                 }, status=status.HTTP_404_NOT_FOUND)
+
+    #         # Listing and filtering courses
+    #         courses = Courses.objects.all()
+
+    #         search_text = request.query_params.get('searchText', None)
+    #         if search_text:
+    #             courses = courses.filter(
+    #                 Q(courseName__icontains=search_text) |
+    #                 Q(instructorName__icontains=search_text) |
+    #                 Q(created_at__date__icontains=search_text) |  # Search by date part of created_at
+    #                 Q(updated_at__date__icontains=search_text)   # Search by date part of updated_at
+    #             )
+
+    #         search_instructor = request.query_params.get('searchInstructor', None)
+    #         if search_instructor:
+    #             courses = courses.filter(instructorName__icontains=search_instructor)
+
+    #         date_range = request.query_params.get('dateRange', None)
+    #         if date_range:
+    #             try:
+    #                 start_date_str, end_date_str = date_range.split(',')
+    #                 start_date = datetime.strptime(start_date_str.strip(), '%Y-%m-%d')
+    #                 end_date = datetime.strptime(end_date_str.strip(), '%Y-%m-%d')
+    #                 end_date = end_date.replace(hour=23, minute=59, second=59)
+
+    #                 courses = courses.filter(created_at__range=(start_date, end_date))
+    #             except ValueError:
+    #                 return Response(
+    #                     {"status": False, "message": "Invalid date range format. Use 'YYYY-MM-DD,YYYY-MM-DD'."},
+    #                     status=status.HTTP_400_BAD_REQUEST
+    #                 )
+
+    #         # Pagination
+    #         limit = int(request.query_params.get('limit', 10))
+    #         page_number = int(request.query_params.get('page', 1))
+            
+    #         paginator = Paginator(courses.order_by('id'), limit)  # Use filtered courses queryset
+    #         page_obj = paginator.get_page(page_number)
+
+    #         serializer = CourseSerializer(page_obj, many=True)
+
+    #         response_data = {
+    #             'status': True if paginator.count > 0 else False,
+    #             'message': 'Courses fetched successfully.' if paginator.count > 0 else 'No Search data found.',
+    #             'data': serializer.data,
+    #             'total': paginator.count,
+    #             'limit': limit,
+    #             'page': page_number,
+    #             'pages': paginator.num_pages
+    #         }
+
+    #         return Response(response_data, status=status.HTTP_200_OK if paginator.count > 0 else status.HTTP_404_NOT_FOUND)
+
+    #     except Exception as e:
+    #         print(f"Error: {str(e)}")
+    #         return Response({
+    #             'status': False,
+    #             'message': f'An unexpected error occurred: {str(e)}',
+    #             'data': [],
+    #             'total': 0,
+    #             'limit': 1,
+    #             'page': 1,
+    #             'pages': 1
+    #         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     
     def post(self, request):
@@ -180,6 +274,9 @@ class CourseView(APIView):
                 "status": False,
                 "message": f"An unexpected error occurred: {str(e)}"
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+
 
 
 from django.http import JsonResponse

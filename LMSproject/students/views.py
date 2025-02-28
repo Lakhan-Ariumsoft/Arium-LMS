@@ -239,6 +239,7 @@ class StudentsListCreateAPIView(APIView):
                             # Convert date strings to datetime.date objects
                             enrollment_date = enrollment.get("enrollmentDate" , None)
                             expiry_date = enrollment.get("expiryDate",None)
+                            enrollStatus = enrollment.get("enrollmentStatus","Active")
 
                             if enrollment_date:
                                 enrollment_date = datetime.strptime(enrollment_date, "%Y-%m-%d").date()
@@ -256,6 +257,7 @@ class StudentsListCreateAPIView(APIView):
                                 courses=course,
                                 enrollmentDate=enrollment_date,
                                 expiryDate=expiry_date,
+                                status = enrollStatus
                             )
 
                             # Update the course's student count
@@ -369,37 +371,29 @@ class StudentsDetailAPIView(APIView):
             return Response({"error": f"An unexpected error occurred: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
-    def delete(self, request, student_id=None, enrollment_id=None):
+    def delete(self, request, pk=None):
         try:
             with transaction.atomic():
-                # Fetch the student instance
+                # Fetch the enrollment instance
                 try:
-                    student = Students.objects.get(pk=student_id)
-                except Students.DoesNotExist:
-                    return Response(
-                        {"success": False, "message": "Student not found."},
-                        status=status.HTTP_404_NOT_FOUND
-                    )
-
-                # Fetch the specific enrollment
-                try:
-                    enrollment = Enrollment.objects.get(pk=enrollment_id, student=student)
+                    enrollment = Enrollment.objects.get(pk=pk)
+                    student = enrollment.student  # Get student from enrollment
                 except Enrollment.DoesNotExist:
                     return Response(
-                        {"success": False, "message": "Enrollment not found for this student."},
+                        {"success": False, "message": "Enrollment not found."},
                         status=status.HTTP_404_NOT_FOUND
                     )
 
-                # Get associated course and decrease student count
+                # Get associated course and update students count
                 course = enrollment.courses
                 if course.studentsCount > 0:  # Prevent negative count
-                    course.studentsCount -= 1
+                    course.studentsCount = max(0, course.studentsCount - 1)
                     course.save(update_fields=["studentsCount"])
 
                 # Delete the specific enrollment
                 enrollment.delete()
 
-                # Check if student is still enrolled in any course
+                # Check if student has any remaining enrollments
                 remaining_enrollments = Enrollment.objects.filter(student=student).exists()
 
                 if not remaining_enrollments:
@@ -424,7 +418,7 @@ class StudentsDetailAPIView(APIView):
             return Response(
                 {"success": False, "message": f"An unexpected error occurred: {str(e)}"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
-        )
+            )
     # def delete(self, request, pk=None):
     #     try:
     #         with transaction.atomic():
