@@ -44,6 +44,8 @@ from rest_framework import status
 from .models import Recordings
 from courses.models import Courses
 from .serializers import RecordingsSerializer
+from django.utils import timezone
+
 
 load_dotenv()
 ZOOM_CLIENT_ID = os.getenv("ZOOM_CLIENT_ID")
@@ -307,25 +309,36 @@ def helperFunction(meeting_id):
                 file_name = f"{meeting_topic}_{recording_id}_{start_time}.mp4"
                 file_path = f"{meeting_folder}/{file_name}"  # Path in the bucket
 
-                # Get recording start and end timestamps
-                start_timestamp = recording.get("recording_start")
-                end_timestamp = recording.get("recording_end")
+                try:
+                    from datetime import datetime
+                    from django.utils import timezone
 
-                if start_timestamp and end_timestamp:
-                    # Convert strings to datetime objects
-                    start_dt = datetime.fromisoformat(start_timestamp.replace("Z", ""))
-                    end_dt = datetime.fromisoformat(end_timestamp.replace("Z", ""))
-                    
-                    # Calculate total duration in seconds
-                    total_seconds = int((end_dt - start_dt).total_seconds())
+                    # Get recording start and end timestamps
+                    start_timestamp = recording.get("recording_start")
+                    end_timestamp = recording.get("recording_end")
 
-                    # Convert to hours, minutes, and seconds
-                    hours, remainder = divmod(total_seconds, 3600)
-                    minutes, seconds = divmod(remainder, 60)
+                    if start_timestamp and end_timestamp:
+                        # Convert strings to datetime objects
+                        start_dt = datetime.fromisoformat(start_timestamp.replace("Z", ""))
+                        end_dt = datetime.fromisoformat(end_timestamp.replace("Z", ""))
+                        
+                        # Make the datetime objects timezone-aware (assuming they are in UTC)
+                        start_dt = timezone.make_aware(start_dt, timezone.utc)
+                        end_dt = timezone.make_aware(end_dt, timezone.utc)
 
-                    # Format as hh:mm:ss
-                    duration_str = f"{hours:02}:{minutes:02}:{seconds:02}"
-                else:
+                        # Calculate total duration in seconds
+                        total_seconds = int((end_dt - start_dt).total_seconds())
+
+                        # Convert to hours, minutes, and seconds
+                        hours, remainder = divmod(total_seconds, 3600)
+                        minutes, seconds = divmod(remainder, 60)
+
+                        # Format as hh:mm:ss
+                        duration_str = f"{hours:02}:{minutes:02}:{seconds:02}"
+                    else:
+                        duration_str = " "
+
+                except:
                     duration_str = " "
 
                 # Generate filename
@@ -493,6 +506,7 @@ class RecordingsView(APIView):
                     "message": "Invalid date range format. Use 'YYYY-MM-DD:YYYY-MM-DD'."
                 }, status=status.HTTP_400_BAD_REQUEST)
 
+        queryset = queryset.order_by('id') 
         paginator = Paginator(queryset, limit)
         paged_data = paginator.get_page(page)
 
