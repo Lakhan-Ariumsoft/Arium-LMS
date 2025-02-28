@@ -322,22 +322,11 @@ def helperFunction(meeting_id):
                         start_dt = datetime.fromisoformat(start_timestamp.replace("Z", ""))
                         end_dt = datetime.fromisoformat(end_timestamp.replace("Z", ""))
                         
-                        # Make the datetime objects timezone-aware (assuming they are in UTC)
-                        start_dt = timezone.make_aware(start_dt, timezone.utc)
-                        end_dt = timezone.make_aware(end_dt, timezone.utc)
-
-                        # Calculate total duration in seconds
-                        total_seconds = int((end_dt - start_dt).total_seconds())
-
-                        # Convert to hours, minutes, and seconds
-                        hours, remainder = divmod(total_seconds, 3600)
-                        minutes, seconds = divmod(remainder, 60)
-
-                        # Format as hh:mm:ss
-                        duration_str = f"{hours:02}:{minutes:02}:{seconds:02}"
+                        # Calculate duration in minutes (rounded)
+                        duration_str = round((end_dt - start_dt).total_seconds() / 60, 2)
                     else:
                         duration_str = " "
-
+                        
                 except:
                     duration_str = " "
 
