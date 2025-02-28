@@ -124,14 +124,14 @@ class LogoutAPIView(APIView):
 
 
     
-from django.contrib.auth.models import User  # Import the User model
+# from django.contrib.auth.models import User  # Import the User model
 from django.db import transaction
 from rest_framework.response import Response
 from rest_framework import status
 from .models import Instructor  # Ensure you import the Instructor model
 from .serializers import InstructorSerializer  # Import your serializer
 from rest_framework import generics, status
-from django.contrib.auth.models import User
+# from django.contrib.auth.models import User
 from rest_framework.response import Response
 from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
 from django.db.models import Q
@@ -152,35 +152,71 @@ class InstructorListCreateView(generics.ListCreateAPIView):
     def get_queryset(self):
         try:
             queryset = Instructor.objects.all().order_by("-created_at")
-            
+
             # Handle search filters
             search_by_course = self.request.query_params.get("searchByCourse", None)
             search_text = self.request.query_params.get("searchText", None)
 
+            # Ensure search_by_course is a valid ID
             if search_by_course:
                 try:
-                    search_by_course = int(search_by_course)  # Ensure it's a valid ID
+                    search_by_course = int(search_by_course)  # Convert to integer
                     queryset = queryset.filter(assigned_courses__id=search_by_course)
                 except ValueError:
                     return Instructor.objects.none()  # Return empty queryset if invalid ID
             
+            # Search by text
             if search_text:
                 queryset = queryset.filter(
                     Q(firstname__icontains=search_text) |
                     Q(lastname__icontains=search_text) |
                     Q(email__icontains=search_text) |
                     Q(phone__icontains=search_text) | 
-                    Q(countryCode__icontains= search_text) 
-                    # Q(assigned_courses__icontains=search_text)
-
+                    Q(countryCode__icontains=search_text) |
+                    Q(assigned_courses__courseName__icontains=search_text)  # Fixed this
                 )
             
             return queryset.distinct()
-        
+
         except Exception as e:
-            # Return an empty queryset to avoid breaking the API
-            print(f"Error in get_queryset: {str(e)}")  # Debugging purpose
-            return Instructor.objects.none()  
+            print(f"Error in get_queryset: {e}")
+            return Instructor.objects.none()
+
+    # def get_queryset(self):
+    #     try:
+    #         queryset = Instructor.objects.all().order_by("-created_at")
+            
+    #         # Handle search filters
+    #         search_by_course = self.request.query_params.get("searchByCourse", None)
+    #         search_text = self.request.query_params.get("searchText", None)
+
+    #         if search_by_course:
+    #             try:
+    #                 search_by_course = int(search_by_course)  # Ensure it's a valid ID
+    #                 queryset = queryset.filter(assigned_courses__id=search_by_course)
+    #             except ValueError:
+    #                 return Instructor.objects.none()  # Return empty queryset if invalid ID
+            
+    #         if search_text:
+    #             queryset = queryset.filter(
+    #                 Q(firstname__icontains=search_text) |
+    #                 Q(lastname__icontains=search_text) |
+    #                 Q(email__icontains=search_text) |
+    #                 Q(phone__icontains=search_text) | 
+    #                 Q(countryCode__icontains= search_text) |
+    #                 Q(assigned_courses__courseName__icontains=search_text) |
+    #                 Q(courseName__icontains=search_text)
+
+
+
+    #             )
+            
+    #         return queryset.distinct()
+        
+    #     except Exception as e:
+    #         # Return an empty queryset to avoid breaking the API
+    #         print(f"Error in get_queryset: {str(e)}")  # Debugging purpose
+    #         return Instructor.objects.none()  
 
     def get_paginated_instructors(self, request, instructors_queryset):
         """
@@ -634,6 +670,7 @@ class InstructorDashboardView(APIView):
             if search_text:
                 courses = courses.filter(
                     Q(courseName__icontains=search_text) |
+                    Q(assigned_courses__icontains=search_text) |
                     Q(created_at__icontains=search_text) |
                     Q(updated_at__icontains=search_text)
                 )
