@@ -654,7 +654,7 @@ class RecordingsView(APIView):
             # Delete the recording
             recording.delete()
 
-            return Response({"status": True, "message": "Recording deleted successfully."}, status=status.HTTP_204_NO_CONTENT)
+            return Response({"status": True, "message": "Recording deleted successfully."}, status=status.HTTP_200_OK)
         
         except Recordings.DoesNotExist:
             return Response({"status": False, "message": "Recording not found."}, status=status.HTTP_404_NOT_FOUND)
