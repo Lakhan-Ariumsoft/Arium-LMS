@@ -61,7 +61,7 @@ class CourseView(APIView):
                 )
 
             # Search by Instructor ID
-            instructor_id = request.query_params.get('instructorId', None)
+            instructor_id = request.query_params.get('searchInstructor', None)
             if instructor_id:
                 courses = courses.filter(instructor_id=instructor_id)
 
