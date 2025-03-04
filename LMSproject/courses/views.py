@@ -281,23 +281,23 @@ class CourseView(APIView):
 
 from django.http import JsonResponse
 from users.models import Instructor
-# from students.models import Students
+from students.models import Students
 
 class CourseDropdownListView(APIView):
-
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        # user = request.user  # Get the authenticated user
+        user = request.user  # Get the authenticated user
 
-        # if user.role.name.lower() == "student":  # Normalize role check (case-insensitive)
-        #     try:
-        #         student = Students.objects.get(email=user.email)  # Fetch the student instance
-        #         enrolled_courses = Courses.objects.filter(enrollment__student=student).distinct()
-        #     except Students.DoesNotExist:
-        #         return JsonResponse({"error": "Student record not found"}, status=404)
-        # else:
-        enrolled_courses = Courses.objects.all()  # For other roles, return all courses
+        if user.role.name.lower() == "student":  # Ensure role check is case-insensitive
+            try:
+                student = Students.objects.get(email=user.email)  # Fetch the student instance
+                # Fetch courses where the student is enrolled
+                enrolled_courses = Courses.objects.filter(enrollment__student=student).distinct()
+            except Students.DoesNotExist:
+                return JsonResponse({"error": "Student record not found"}, status=404)
+        else:
+            enrolled_courses = Courses.objects.all()  # For other roles, return all courses
 
         data = [{"id": course.id, "title": course.courseName} for course in enrolled_courses]
         return JsonResponse(data, safe=False)

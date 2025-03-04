@@ -539,23 +539,21 @@ class DashboardAPIView(APIView):
         # Get the logged-in user
         user = request.user
 
-        # Get the student instance
+        # Fetch the student instance
         student = get_object_or_404(Students, email=user.email)  # Assuming email is the identifier
 
-        # Get all enrolled courses for the student
-        enrollments = Enrollment.objects.filter(student=student, status="active")  # Ensure only active enrollments
+        # Fetch courses where the student is enrolled
+        enrolled_courses = Courses.objects.filter(enrollment__student=student).distinct()
 
         # Get search parameters
         search_text = request.query_params.get('searchText', None)
-        search_course_id = request.query_params.get('searchCourse', None)  # Now filtering by course ID
-        date_range = request.query_params.get('dateRange', None)  # Expected format: "YYYY-MM-DD,YYYY-MM-DD"
+        search_course_id = request.query_params.get('searchCourse', None)
+        date_range = request.query_params.get('dateRange', None)
 
-        # Fetch course details and Zoom meeting details for enrolled courses
         enrolled_courses_data = []
-        for enrollment in enrollments:
-            course = enrollment.courses
-
-            # Fetch Zoom meetings associated with this course
+        
+        for course in enrolled_courses:
+            # Fetch Zoom recordings for the course
             zoom_meetings = Recordings.objects.filter(course=course)
 
             # Apply filters
@@ -594,18 +592,18 @@ class DashboardAPIView(APIView):
                         "pages": 1
                     }, status=status.HTTP_400_BAD_REQUEST)
 
+            # Collect course and meeting data
             for meeting in zoom_meetings:
-                course_data = {
+                enrolled_courses_data.append({
                     "courseId": course.id,
                     "courseName": course.courseName,
                     "title": meeting.title,
                     "recordingUrl": meeting.recording_url,
                     "duration": meeting.duration,
-                    "updatedAt": meeting.updated_at.strftime("%Y-%m-%d %H:%M:%S")  # Format date/time
-                }
-                enrolled_courses_data.append(course_data)
+                    "updatedAt": meeting.updated_at.strftime("%Y-%m-%d %H:%M:%S")
+                })
 
-        # Response data (Always consistent format)
+        # Response data
         response_data = {
             "status": True,
             "message": "Fetched successfully.",
@@ -617,6 +615,89 @@ class DashboardAPIView(APIView):
         }
 
         return Response(response_data, status=status.HTTP_200_OK)
+
+    # def get(self, request):
+    #     # Get the logged-in user
+    #     user = request.user
+
+    #     # Get the student instance
+    #     student = get_object_or_404(Students, email=user.email)  # Assuming email is the identifier
+
+    #     # Get all enrolled courses for the student
+    #     enrollments = Enrollment.objects.filter(student=student, status="active")  # Ensure only active enrollments
+
+    #     # Get search parameters
+    #     search_text = request.query_params.get('searchText', None)
+    #     search_course_id = request.query_params.get('searchCourse', None)  # Now filtering by course ID
+    #     date_range = request.query_params.get('dateRange', None)  # Expected format: "YYYY-MM-DD,YYYY-MM-DD"
+
+    #     # Fetch course details and Zoom meeting details for enrolled courses
+    #     enrolled_courses_data = []
+    #     for enrollment in enrollments:
+    #         course = enrollment.courses
+
+    #         # Fetch Zoom meetings associated with this course
+    #         zoom_meetings = Recordings.objects.filter(course=course)
+
+    #         # Apply filters
+    #         if search_text:
+    #             zoom_meetings = zoom_meetings.filter(title__icontains=search_text)
+
+    #         if search_course_id:
+    #             try:
+    #                 course_id = int(search_course_id)
+    #                 zoom_meetings = zoom_meetings.filter(course__id=course_id)
+    #             except ValueError:
+    #                 return Response({
+    #                     "status": False,
+    #                     "message": "Invalid course ID. It should be a valid integer.",
+    #                     "data": [],
+    #                     "total": 0,
+    #                     "limit": 10,
+    #                     "page": 1,
+    #                     "pages": 1
+    #                 }, status=status.HTTP_400_BAD_REQUEST)
+
+    #         if date_range:
+    #             try:
+    #                 start_date, end_date = date_range.split(',')
+    #                 start_date = datetime.strptime(start_date.strip(), "%Y-%m-%d")
+    #                 end_date = datetime.strptime(end_date.strip(), "%Y-%m-%d")
+    #                 zoom_meetings = zoom_meetings.filter(updated_at__date__range=(start_date, end_date))
+    #             except ValueError:
+    #                 return Response({
+    #                     "status": False,
+    #                     "message": "Invalid date range format. Expected format: YYYY-MM-DD,YYYY-MM-DD",
+    #                     "data": [],
+    #                     "total": 0,
+    #                     "limit": 10,
+    #                     "page": 1,
+    #                     "pages": 1
+    #                 }, status=status.HTTP_400_BAD_REQUEST)
+
+    #         for meeting in zoom_meetings:
+    #             course_data = {
+    #                 "courseId": course.id,
+    #                 "courseName": course.courseName,
+    #                 "title": meeting.title,
+    #                 "recordingUrl": meeting.recording_url,
+    #                 "duration": meeting.duration,
+    #                 "updatedAt": meeting.updated_at.strftime("%Y-%m-%d %H:%M:%S")  # Format date/time
+    #             }
+    #             enrolled_courses_data.append(course_data)
+
+    #     # Response data (Always consistent format)
+    #     response_data = {
+    #         "status": True,
+    #         "message": "Fetched successfully.",
+    #         "data": enrolled_courses_data,
+    #         "total": len(enrolled_courses_data),
+    #         "limit": 10,
+    #         "page": 1,
+    #         "pages": 1
+    #     }
+
+    #     return Response(response_data, status=status.HTTP_200_OK)
 
     # def get(self, request):
     #     # Get the logged-in user

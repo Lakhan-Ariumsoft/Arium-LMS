@@ -182,41 +182,6 @@ class InstructorListCreateView(generics.ListCreateAPIView):
             print(f"Error in get_queryset: {e}")
             return Instructor.objects.none()
 
-    # def get_queryset(self):
-    #     try:
-    #         queryset = Instructor.objects.all().order_by("-created_at")
-            
-    #         # Handle search filters
-    #         search_by_course = self.request.query_params.get("searchByCourse", None)
-    #         search_text = self.request.query_params.get("searchText", None)
-
-    #         if search_by_course:
-    #             try:
-    #                 search_by_course = int(search_by_course)  # Ensure it's a valid ID
-    #                 queryset = queryset.filter(assigned_courses__id=search_by_course)
-    #             except ValueError:
-    #                 return Instructor.objects.none()  # Return empty queryset if invalid ID
-            
-    #         if search_text:
-    #             queryset = queryset.filter(
-    #                 Q(firstname__icontains=search_text) |
-    #                 Q(lastname__icontains=search_text) |
-    #                 Q(email__icontains=search_text) |
-    #                 Q(phone__icontains=search_text) | 
-    #                 Q(countryCode__icontains= search_text) |
-    #                 Q(assigned_courses__courseName__icontains=search_text) |
-    #                 Q(courseName__icontains=search_text)
-
-
-
-    #             )
-            
-    #         return queryset.distinct()
-        
-    #     except Exception as e:
-    #         # Return an empty queryset to avoid breaking the API
-    #         print(f"Error in get_queryset: {str(e)}")  # Debugging purpose
-    #         return Instructor.objects.none()  
 
     def get_paginated_instructors(self, request, instructors_queryset):
         """
@@ -511,6 +476,11 @@ class InstructorRetrieveUpdateDestroyView(generics.RetrieveUpdateDestroyAPIView)
                 # Remove instructor from all assigned courses before deletion
                 Courses.objects.filter(instructor=instance).update(instructor=None)
 
+                user = User.objects.filter(email=instance.email).first()
+                if user:
+                    user.is_active = False
+                    user.save()
+
                 instance.delete()
 
             response = {"status": True, "message": "Instructor deleted successfully."}
@@ -525,96 +495,6 @@ class InstructorRetrieveUpdateDestroyView(generics.RetrieveUpdateDestroyAPIView)
                 {"status": False, "message": str(e)},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
-
-
-# class InstructorDashboardView(APIView):
-#     permission_classes = [IsAuthenticated, IsModeratorOrInstructor]
-
-#     def get(self, request):
-#         try:
-#             # Get logged-in instructor
-#             instructor = Instructor.objects.filter(email=request.user.email).first()
-#             if not instructor:
-#                 return Response(
-#                     {"status": False, "message": "Instructor not found."},
-#                     status=status.HTTP_404_NOT_FOUND,
-#                 )
-
-#             # Get assigned courses
-#             courses = instructor.assigned_courses.all()
-#             if not courses.exists():
-#                 return Response(
-#                     {"status": False, "message": "Instructor is not assigned to any course."},
-#                     status=status.HTTP_404_NOT_FOUND,
-#                 )
-
-#             # Apply search filter
-#             search_text = request.query_params.get("searchText", None)
-#             if search_text:
-#                 courses = courses.filter(
-#                     Q(courseName__icontains=search_text) |
-#                     Q(created_at__icontains=search_text) |
-#                     Q(updated_at__icontains=search_text)
-#                 )
-
-#             # If no results after search
-#             if not courses.exists():
-#                 return Response(
-#                     {
-#                         "status": False,
-#                         "message": "No search data found.",
-#                         "data": [],
-#                         "total": 0,
-#                         "limit": 10,
-#                         "page": 1,
-#                         "pages": 0,
-#                     },
-#                     status=status.HTTP_404_NOT_FOUND,
-#                 )
-
-#             # Annotate required fields
-#             courses = courses.annotate(
-#                 total_videos=Count("recordings"),
-#                 total_students=Count("students")
-#             ).order_by("-updated_at")
-
-#             # Pagination
-#             limit = int(request.query_params.get("limit", 10))
-#             page_number = int(request.query_params.get("page", 1))
-#             paginator = Paginator(courses, limit)
-#             page_obj = paginator.get_page(page_number)
-
-#             # Serialize data
-#             response_data = [
-#                 {
-#                     "courseName": course.courseName,
-#                     "TotalVideos": course.total_videos,
-#                     "TotalStudent": course.total_students,
-#                     "LastUpdatedDate": course.updated_at.strftime("%Y-%m-%d %H:%M:%S"),
-#                 }
-#                 for course in page_obj
-#             ]
-
-#             return Response(
-#                 {
-#                     "status": True if paginator.count > 0 else False,
-#                     "message": "Courses fetched successfully.",
-#                     "data": response_data,
-#                     "total": paginator.count,
-#                     "limit": limit,
-#                     "page": page_number,
-#                     "pages": paginator.num_pages,
-#                 },
-#                 status=status.HTTP_200_OK,
-#             )
-
-#         except Exception as e:
-#             return Response(
-#                 {"status": False, "message": f"An error occurred: {str(e)}"},
-#                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-#             )
-
-
 
 from datetime import datetime
 from django.db.models import Q, Count
