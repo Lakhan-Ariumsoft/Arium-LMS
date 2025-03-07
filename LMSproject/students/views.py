@@ -605,8 +605,9 @@ class DashboardAPIView(APIView):
             unique_meetings = set()
 
             for meeting in zoom_meetings:
-                unique_key = (meeting.title.strip(), meeting.duration, meeting.updated_at.strftime("%Y-%m-%d %H:%M:%S"))
+                unique_key = (meeting.title.strip().lower(), meeting.duration, meeting.updated_at.strftime("%Y-%m-%d %H:%M:%S"))
 
+                # Store only the first occurrence of a unique meeting
                 if unique_key not in unique_meetings:
                     unique_meetings.add(unique_key)
                     enrolled_courses_data.append({
