@@ -45,7 +45,7 @@ class LoginAPIView(APIView):
         
         try:
             try:
-                user = User.objects.get(phone=phone, countryCode=countryCode)
+                user = User.objects.get(phone=phone, countryCode=countryCode,is_active=True)
             except User.DoesNotExist:
                 return Response({"status": False, "message": "User not found."}, status=status.HTTP_404_NOT_FOUND)
 

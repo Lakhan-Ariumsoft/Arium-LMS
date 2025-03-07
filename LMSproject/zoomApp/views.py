@@ -372,7 +372,7 @@ def helperFunction(meeting_id):
                         try:
 
                             # Find the course based on the course name
-                            course = Courses.objects.filter(courseName=course_name).first()
+                            course = Courses.objects.filter(courseName__iexact=course_name).first()
                             # Create a new recording entry
                             recording = Recordings.objects.create(
                                 title=meeting_topic,
@@ -633,9 +633,6 @@ class RecordingsView(APIView):
             "updated_courses": list(recording.course.values_list("id", flat=True))  # Return updated course IDs
         }, status=status.HTTP_200_OK)
 
-
-
-   
     
     def delete(self, request, pk):
         try:
