@@ -602,23 +602,23 @@ class DashboardAPIView(APIView):
             #         "duration": meeting.duration,
             #         "updatedAt": meeting.updated_at.strftime("%Y-%m-%d %H:%M:%S")
             #     })
-            unique_meetings = {}
+            unique_meetings = set()
 
             for meeting in zoom_meetings:
                 unique_key = (meeting.title, meeting.duration, meeting.updated_at.strftime("%Y-%m-%d %H:%M:%S"))
 
+                # Add only if it's not already in the set (ensures uniqueness)
                 if unique_key not in unique_meetings:
-                    unique_meetings[unique_key] = {
+                    unique_meetings.add(unique_key)
+                    enrolled_courses_data.append({
                         "courseId": course.id,
                         "courseName": course.courseName,
                         "title": meeting.title,
                         "recordingUrl": meeting.recording_url,
                         "duration": meeting.duration,
                         "updatedAt": unique_key[2]
-                    }
+                    })
 
-            # Convert the dictionary values to a list
-            enrolled_courses_data = list(unique_meetings.values())
 
 
         # Response data
