@@ -23,6 +23,7 @@ from zoomApp.models import Recordings
 from courses.models import Courses
 from .serializers import StudentsSerializer
 from users.permissions import IsModerator
+from users.models import User
 # from django.http import JsonResponse
 
 
@@ -399,8 +400,7 @@ class StudentsDetailAPIView(APIView):
                 if not remaining_enrollments:
                     # If no enrollments remain, deactivate user and delete student
                     if hasattr(student, "user") and student.user:
-                        student.user.is_active = False
-                        student.user.save(update_fields=["is_active"])
+                        User.objects.filter(id=student.user.id).delete()
 
                     student.delete()
 
