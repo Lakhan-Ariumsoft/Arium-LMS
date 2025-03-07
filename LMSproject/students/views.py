@@ -399,8 +399,10 @@ class StudentsDetailAPIView(APIView):
 
                 if not remaining_enrollments:
                     # If no enrollments remain, deactivate user and delete student
-                    if hasattr(student, "user") and student.user:
-                        User.objects.filter(id=student.user.id).delete()
+                    if hasattr(student, "phone") and student.phone:
+                        user = User.objects.filter(phone=student.phone).first()
+                        if user:
+                            user.delete() 
 
                     student.delete()
 
