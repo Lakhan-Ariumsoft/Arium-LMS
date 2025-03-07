@@ -593,34 +593,15 @@ class DashboardAPIView(APIView):
                     }, status=status.HTTP_400_BAD_REQUEST)
 
             # Collect course and meeting data
-            # for meeting in zoom_meetings:
-            #     enrolled_courses_data.append({
-            #         "courseId": course.id,
-            #         "courseName": course.courseName,
-            #         "title": meeting.title,
-            #         "recordingUrl": meeting.recording_url,
-            #         "duration": meeting.duration,
-            #         "updatedAt": meeting.updated_at.strftime("%Y-%m-%d %H:%M:%S")
-            #     })
-            unique_meetings = set()
-
             for meeting in zoom_meetings:
-                unique_key = (meeting.title.strip().lower(), meeting.duration, meeting.updated_at.strftime("%Y-%m-%d %H:%M:%S"))
-
-                # Store only the first occurrence of a unique meeting
-                if unique_key not in unique_meetings:
-                    unique_meetings.add(unique_key)
-                    enrolled_courses_data.append({
-                        "courseId": course.id,
-                        "courseName": course.courseName,
-                        "title": meeting.title,
-                        "recordingUrl": meeting.recording_url,
-                        "duration": meeting.duration,
-                        "updatedAt": unique_key[2]
-                    })
-
-
-
+                enrolled_courses_data.append({
+                    "courseId": course.id,
+                    "courseName": course.courseName,
+                    "title": meeting.title,
+                    "recordingUrl": meeting.recording_url,
+                    "duration": meeting.duration,
+                    "updatedAt": meeting.updated_at.strftime("%Y-%m-%d %H:%M:%S")
+                })
 
         # Response data
         response_data = {
