@@ -478,8 +478,7 @@ class InstructorRetrieveUpdateDestroyView(generics.RetrieveUpdateDestroyAPIView)
 
                 user = User.objects.filter(email=instance.email).first()
                 if user:
-                    user.is_active = False
-                    user.save()
+                    user.delete()
 
                 instance.delete()
 
