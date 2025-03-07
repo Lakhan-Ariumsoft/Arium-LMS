@@ -551,6 +551,7 @@ class DashboardAPIView(APIView):
         date_range = request.query_params.get('dateRange', None)
 
         enrolled_courses_data = []
+        unique_meetings = set()
         
         for course in enrolled_courses:
             # Fetch Zoom recordings for the course
@@ -603,24 +604,21 @@ class DashboardAPIView(APIView):
             #         "updatedAt": meeting.updated_at.strftime("%Y-%m-%d %H:%M:%S")
             #     })
 
-            unique_meetings = set()
             # enrolled_courses_data = []
 
             for meeting in zoom_meetings:
                 unique_key = (meeting.title.strip().lower(), meeting.duration, meeting.updated_at.strftime("%Y-%m-%d %H:%M:%S"))
 
-                # If the same (title, duration, updatedAt) exists, skip adding duplicate
                 if unique_key not in unique_meetings:
-                    unique_meetings.add(unique_key)
+                    unique_meetings.add(unique_key)  # Store the unique key to prevent duplicates
                     enrolled_courses_data.append({
-                        "courseId": course.id,  # This will take the first courseId occurrence
+                        "courseId": course.id,
                         "courseName": course.courseName,
                         "title": meeting.title,
                         "recordingUrl": meeting.recording_url,
                         "duration": meeting.duration,
                         "updatedAt": unique_key[2]
                     })
-
 
         # Response data
         response_data = {
