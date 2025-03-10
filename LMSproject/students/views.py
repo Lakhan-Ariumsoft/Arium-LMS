@@ -27,90 +27,57 @@ from users.models import User
 # from django.http import JsonResponse
 
 
-
-def get_paginated_students(request, students_queryset):
+def get_paginated_students(request, students_queryset, search_course):
     """
     Handles pagination for the students data and returns the paginated response.
     """
     try:
-        # Default limit and page if not provided in the query params
         limit = int(request.query_params.get('limit', 10))
-        page = request.query_params.get('page', 1)
-
-        paginator = Paginator(students_queryset, limit)
-
-        try:
-            # Get the requested page
-            paginated_students = paginator.get_page(page)
-        except PageNotAnInteger:
-            # If the page is not an integer, return the first page
-            paginated_students = paginator.page(1)
-        except EmptyPage:
-            # If the page is out of range, return an empty result
-            paginated_students = []
+        page = int(request.query_params.get('page', 1))
 
         student_data = []
+        all_enrollments = []
 
-        for student in paginated_students:
+        # Filtering enrollments based on searchCourse if provided
+        for student in students_queryset:
             enrollments = Enrollment.objects.filter(student=student)
-            student_serializer = StudentsSerializer(student)
+            
+            # If search_course is given, filter enrollments by course ID
+            if search_course:
+                enrollments = enrollments.filter(courses__id=search_course)
 
             for enrollment in enrollments:
-                student_data.append({
+                all_enrollments.append({
                     "studentId": student.id,
                     "name": f"{student.firstname} {student.lastname}",
                     "countryCode": student.countryCode if student.countryCode else "",
                     "phone": student.phone,
                     "email": student.email,
                     "dob": student.dob.strftime("%Y-%m-%d") if student.dob else "",
-                    "enrollmentId" : enrollment.id,
+                    "enrollmentId": enrollment.id,
                     "course": enrollment.courses.courseName,
                     "start_date": enrollment.enrollmentDate.isoformat() if enrollment.enrollmentDate else "",
                     "end_date": enrollment.expiryDate.isoformat() if enrollment.expiryDate else "",
                     "status": enrollment.status
                 })
 
-# Now `student_data` will contain separate entries for each enrolled course.
+        # Apply pagination to enrollments instead of students
+        paginator = Paginator(all_enrollments, limit)
 
+        try:
+            paginated_data = paginator.page(page)
+        except PageNotAnInteger:
+            paginated_data = paginator.page(1)
+        except EmptyPage:
+            paginated_data = []
 
-        # Prepare student data
-        # student_data = []
-        # for student in paginated_students:
-        #     enrollments = Enrollment.objects.filter(student=student)
-        #     student_serializer = StudentsSerializer(student)
-
-        #     enrolled_courses = []
-
-        #     for enrollment in enrollments:
-        #         enrolled_courses.append({
-        #             "course": enrollment.courses.courseName,
-        #             "start_date": enrollment.enrollmentDate.isoformat() if enrollment.enrollmentDate else "",
-        #             "end_date": enrollment.expiryDate.isoformat() if enrollment.expiryDate else "",
-        #             "status" : enrollment.status
-        #         })
-
-        #     print(f"ID: {student.id}, Name: {student.firstname} {student.lastname}, DOB: {student.dob}, Country Code: {student.countryCode}")
-
-
-        #     student_data.append({
-        #         "_id": student.id,
-        #         "name": f"{student.firstname} {student.lastname}",
-        #         "countryCode":  student.countryCode if student.countryCode else "",
-        #         "phone": student.phone,
-        #         "email": student.email,
-        #         "dob" : student.dob.strftime("%Y-%m-%d") if student.dob else "",
-        #         # "status": student.status,
-        #         "enrolled_courses": enrolled_courses,
-        #     })
-
-        # Return paginated response
         response = {
             "status": True,
             "message": "Fetched successfully.",
-            "data": student_data,
+            "data": list(paginated_data),
             "total": paginator.count,
             "limit": limit,
-            "page": int(paginated_students.number) if paginated_students else int(page),
+            "page": page,
             "pages": paginator.num_pages,
         }
 
@@ -121,6 +88,101 @@ def get_paginated_students(request, students_queryset):
             {"status": False, "message": f"An unexpected error occurred: {str(e)}"},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
+
+
+# def get_paginated_students(request, students_queryset):
+#     """
+#     Handles pagination for the students data and returns the paginated response.
+#     """
+#     try:
+#         # Default limit and page if not provided in the query params
+#         limit = int(request.query_params.get('limit', 10))
+#         page = int(request.query_params.get('page', 1))
+
+#         paginator = Paginator(students_queryset, limit)
+
+#         try:
+#             # Get the requested page
+#             paginated_students = paginator.get_page(page)
+#         except PageNotAnInteger:
+#             # If the page is not an integer, return the first page
+#             paginated_students = paginator.page(1)
+#         except EmptyPage:
+#             # If the page is out of range, return an empty result
+#             paginated_students = []
+
+#         student_data = []
+
+#         for student in paginated_students:
+#             enrollments = Enrollment.objects.filter(student=student)
+#             student_serializer = StudentsSerializer(student)
+
+#             for enrollment in enrollments:
+#                 student_data.append({
+#                     "studentId": student.id,
+#                     "name": f"{student.firstname} {student.lastname}",
+#                     "countryCode": student.countryCode if student.countryCode else "",
+#                     "phone": student.phone,
+#                     "email": student.email,
+#                     "dob": student.dob.strftime("%Y-%m-%d") if student.dob else "",
+#                     "enrollmentId" : enrollment.id,
+#                     "course": enrollment.courses.courseName,
+#                     "start_date": enrollment.enrollmentDate.isoformat() if enrollment.enrollmentDate else "",
+#                     "end_date": enrollment.expiryDate.isoformat() if enrollment.expiryDate else "",
+#                     "status": enrollment.status
+#                 })
+
+# # Now `student_data` will contain separate entries for each enrolled course.
+
+
+#         # Prepare student data
+#         # student_data = []
+#         # for student in paginated_students:
+#         #     enrollments = Enrollment.objects.filter(student=student)
+#         #     student_serializer = StudentsSerializer(student)
+
+#         #     enrolled_courses = []
+
+#         #     for enrollment in enrollments:
+#         #         enrolled_courses.append({
+#         #             "course": enrollment.courses.courseName,
+#         #             "start_date": enrollment.enrollmentDate.isoformat() if enrollment.enrollmentDate else "",
+#         #             "end_date": enrollment.expiryDate.isoformat() if enrollment.expiryDate else "",
+#         #             "status" : enrollment.status
+#         #         })
+
+#         #     print(f"ID: {student.id}, Name: {student.firstname} {student.lastname}, DOB: {student.dob}, Country Code: {student.countryCode}")
+
+
+#         #     student_data.append({
+#         #         "_id": student.id,
+#         #         "name": f"{student.firstname} {student.lastname}",
+#         #         "countryCode":  student.countryCode if student.countryCode else "",
+#         #         "phone": student.phone,
+#         #         "email": student.email,
+#         #         "dob" : student.dob.strftime("%Y-%m-%d") if student.dob else "",
+#         #         # "status": student.status,
+#         #         "enrolled_courses": enrolled_courses,
+#         #     })
+
+#         # Return paginated response
+#         response = {
+#             "status": True,
+#             "message": "Fetched successfully.",
+#             "data": student_data,
+#             "total": paginator.count,
+#             "limit": limit,
+#             "page": int(paginated_students.number) if paginated_students else int(page),
+#             "pages": paginator.num_pages,
+#         }
+
+#         return Response(response, status=status.HTTP_200_OK)
+
+#     except Exception as e:
+#         return Response(
+#             {"status": False, "message": f"An unexpected error occurred: {str(e)}"},
+#             status=status.HTTP_500_INTERNAL_SERVER_ERROR
+#         )
 
 def checkStudentsEnrollment(student):
     """
@@ -143,57 +205,103 @@ class StudentsListCreateAPIView(APIView):
 
     permission_classes = [IsAuthenticated, IsModerator] 
 
-
     def get(self, request):
         try:
-
             search_text = request.query_params.get('searchText', None)
             search_course = request.query_params.get('searchCourse', None)
             search_status = request.query_params.get('searchStatus', None)
 
-            # Build the Q object to filter the queryset
             query = Q()
 
             if search_text:
                 query |= Q(firstname__icontains=search_text) | Q(lastname__icontains=search_text)
                 query |= Q(email__icontains=search_text) | Q(phone__icontains=search_text)
-                # query |= Q(status__icontains=search_text)
 
             if search_course:
                 try:
-                # query &= Q(enrollment__courses__courseName__icontains=search_course) 
-                    query &= Q(enrollment__courses__id=search_course) 
+                    search_course = int(search_course)
+                    query &= Q(enrollment__courses__id=search_course)
                 except ValueError:
                     print(f"Searching by name: {search_course}")
-                    query &= Q(enrollments__course__title__icontains=search_course)
-
 
             if search_status:
-                query &= Q(enrollment__status__icontains=search_status)  
+                query &= Q(enrollment__status__icontains=search_status)
 
-            # Filter students based on the query
             students_queryset = Students.objects.filter(query).distinct().order_by('id')
 
-            # Case 1: No students in the database
+            # No records in the database
             if not Students.objects.exists():
-                return Response({"status" : True ,"message": "No records found in the database.","data" : [] , "total" : 0 , "page":1 , "pages":1}, status=status.HTTP_404_NOT_FOUND)
-            
-            # Case 2: Query parameter provided but no matching records found
+                return Response(
+                    {"status": True, "message": "No records found in the database.", "data": [], "total": 0, "page": 1, "pages": 1},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+
+            # No search results found
             if search_text or search_course or search_status:
                 if not students_queryset.exists():
-                    return Response({"status" : True ,"message": "No search data found","data": [] , "total" : 0 , "page":1 , "pages":1}, status=status.HTTP_404_NOT_FOUND)
-                
+                    return Response(
+                        {"status": True, "message": "No search data found", "data": [], "total": 0, "page": 1, "pages": 1},
+                        status=status.HTTP_404_NOT_FOUND
+                    )
 
-            # Case 3: Return paginated students
-            return get_paginated_students(request, students_queryset)
+            return get_paginated_students(request, students_queryset, search_course)
 
         except Exception as e:
-            # Log the error if needed
             print(f"Error occurred while fetching students: {str(e)}")
             return Response(
-                {"status":"error","message": f"An unexpected error occurred: {str(e)}"},
+                {"status": "error", "message": f"An unexpected error occurred: {str(e)}"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+
+    # def get(self, request):
+    #     try:
+
+    #         search_text = request.query_params.get('searchText', None)
+    #         search_course = request.query_params.get('searchCourse', None)
+    #         search_status = request.query_params.get('searchStatus', None)
+
+    #         # Build the Q object to filter the queryset
+    #         query = Q()
+
+    #         if search_text:
+    #             query |= Q(firstname__icontains=search_text) | Q(lastname__icontains=search_text)
+    #             query |= Q(email__icontains=search_text) | Q(phone__icontains=search_text)
+    #             # query |= Q(status__icontains=search_text)
+
+    #         if search_course:
+    #             try:
+    #                 query &= Q(enrollment__courses__id=search_course) 
+    #             except ValueError:
+    #                 print(f"Searching by name: {search_course}")
+    #                 # query &= Q(enrollments__course__title__icontains=search_course)
+
+
+    #         if search_status:
+    #             query &= Q(enrollment__status__icontains=search_status)  
+
+    #         # Filter students based on the query
+    #         students_queryset = Students.objects.filter(query).distinct().order_by('id')
+
+    #         # Case 1: No students in the database
+    #         if not Students.objects.exists():
+    #             return Response({"status" : True ,"message": "No records found in the database.","data" : [] , "total" : 0 , "page":1 , "pages":1}, status=status.HTTP_404_NOT_FOUND)
+            
+    #         # Case 2: Query parameter provided but no matching records found
+    #         if search_text or search_course or search_status:
+    #             if not students_queryset.exists():
+    #                 return Response({"status" : True ,"message": "No search data found","data": [] , "total" : 0 , "page":1 , "pages":1}, status=status.HTTP_404_NOT_FOUND)
+                
+
+    #         # Case 3: Return paginated students
+    #         return get_paginated_students(request, students_queryset)
+
+    #     except Exception as e:
+    #         # Log the error if needed
+    #         print(f"Error occurred while fetching students: {str(e)}")
+    #         return Response(
+    #             {"status":"error","message": f"An unexpected error occurred: {str(e)}"},
+    #             status=status.HTTP_500_INTERNAL_SERVER_ERROR
+    #         )
 
     def post(self, request):
         """
