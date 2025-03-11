@@ -430,11 +430,11 @@ logger = logging.getLogger(__name__)
 
 class GetValidRecordingUrl(APIView):
 
-    permission_classes = IsAuthenticated
+    permission_classes = [IsAuthenticated]
 
-    def get(request, recording_id):
+    def get(self ,request,pk):
         try:
-            recording = Recordings.objects.get(id=recording_id)
+            recording = Recordings.objects.get(id=pk)
             storage_client = storage.Client.from_service_account_json(GCP_CREDENTIALS)
             bucket = storage_client.bucket(GCP_BUCKET_NAME)
             # Check if signed URL is expired
