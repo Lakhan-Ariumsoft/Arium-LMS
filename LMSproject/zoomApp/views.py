@@ -432,22 +432,29 @@ class GetValidRecordingUrl(APIView):
 
     permission_classes = [IsAuthenticated]
 
-    def get(self ,request,pk):
+    def get(self, request, pk):
         try:
+            # Fetch recording from DB
             recording = Recordings.objects.get(id=pk)
-            storage_client = storage.Client.from_service_account_json(GCP_CREDENTIALS)
-            bucket = storage_client.bucket(GCP_BUCKET_NAME)
-            # Check if signed URL is expired
-            if not recording.expiration_time or now() > recording.expiration_time:
-                blob = bucket.blob(recording.filePath)
 
-                # new_signed_url, new_expiration = generateSignedUrl(GCP_BUCKET_NAME, recording.filePath)
-                expiration=604800
+            # If filePath is missing, return the existing recording URL
+            if not recording.filePath:
+                return JsonResponse({"recording_url": recording.recording_url})
+            
+            # Check if signed URL has expired
+            if not recording.expiration_time or now() > recording.expiration_time:
+                storage_client = storage.Client.from_service_account_json(GCP_CREDENTIALS)
+                bucket = storage_client.bucket(GCP_BUCKET_NAME)
+                blob = bucket.blob(recording.filePath)
+                print("Expired::: Generating new signed URL")
+
+                expiration = 604800  # 7 days in seconds
                 new_expiration = make_aware(datetime.datetime.utcnow() + datetime.timedelta(seconds=expiration))
                 new_signed_url = blob.generate_signed_url(
-                        expiration=new_expiration,
-                        method="GET"
-                    )
+                    expiration=new_expiration,
+                    method="GET"
+                )
+
                 if not new_signed_url:
                     return JsonResponse({"error": "Failed to generate signed URL"}, status=500)
 
@@ -460,10 +467,13 @@ class GetValidRecordingUrl(APIView):
 
         except Recordings.DoesNotExist:
             return JsonResponse({"error": "Recording not found"}, status=404)
+
+        except storage.exceptions.NotFound:
+            return JsonResponse({"error": "File not found in GCP storage"}, status=404)
+
         except Exception as e:
             logger.error(f"Unexpected error: {str(e)}")
             return JsonResponse({"error": "Something went wrong"}, status=500)
-
 
 
 
