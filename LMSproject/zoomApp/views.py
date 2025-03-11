@@ -4,20 +4,13 @@ import requests
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from dotenv import load_dotenv
-from google.cloud import storage
-from datetime import datetime
 import hmac
 import hashlib
-import tempfile
-
 import base64
 from datetime import datetime
 from google.cloud import storage
-from google.oauth2.credentials import Credentials
-from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 import base64
-import time
 
 from django.http import JsonResponse
 from django.core.paginator import Paginator
@@ -44,7 +37,6 @@ from rest_framework import status
 from .models import Recordings
 from courses.models import Courses
 from .serializers import RecordingsSerializer
-from django.utils import timezone
 
 
 load_dotenv()
@@ -364,11 +356,34 @@ def helperFunction(meeting_id):
                         # Update metadata to mark upload as complete
                         blob.metadata = {"status": "uploaded", "meeting_id": meeting_id}
                         blob.patch()
-                        try:
-                            publicUrl = blob.public_url
-                        except:
-                            publicUrl = ""
+                        
+
+                        # try:
+                        #     publicUrl = blob.public_url
+                        # except:
+                        #     publicUrl = ""
                         # Save Zoom meeting details to the database
+
+                        try:
+                            import datetime
+                            from django.utils.timezone import make_aware
+
+                            expiration=604800
+                            expirationTime = make_aware(datetime.datetime.utcnow() + datetime.timedelta(seconds=expiration))
+                            signed_url = blob.generate_signed_url(
+                                    expiration=expirationTime,
+                                    method="GET"
+                                )
+                            print(":::::      :::::::::           ::::::::393          :", file_path , GCP_BUCKET_NAME)
+                            # signed_url , expirationTime = generateSignedUrl(GCP_BUCKET_NAME, file_path)
+                            print(":::::: :::    ::      ::    :",signed_url , expirationTime)
+                        except Exception as e:
+                            print()
+                            print("::::::::::::: LLLLL   :L::::::::::: ")
+                            print(f"Error generating signed URL: {e}")
+                            # signed_url = ""
+                            # expirationTime = make_aware(datetime.datetime.utcnow()) 
+                        
                         try:
 
                             # Find the course based on the course name
@@ -378,7 +393,9 @@ def helperFunction(meeting_id):
                                 title=meeting_topic,
                                 meeting_id=meeting_id,
                                 duration=duration_str,  # Assuming duration is available
-                                recording_url=publicUrl
+                                filePath=file_path,
+                                recording_url=signed_url,
+                                expiration_time=expirationTime
                             )
 
                             # If a course is found, associate it with the recording
@@ -398,11 +415,57 @@ def helperFunction(meeting_id):
         print(f"Critical error in upload_recordings for meeting ID '{meeting_id}': {e}")
 
 
+import logging
+from django.utils.timezone import now
+import datetime
+from django.utils.timezone import make_aware
 from django.shortcuts import get_object_or_404
 from django.db.models import F
 from django.db.models import ManyToManyField
 from users.permissions import IsModeratorOrInstructor 
 from rest_framework.permissions import IsAuthenticated
+
+# Configure logging
+logger = logging.getLogger(__name__)
+
+class GetValidRecordingUrl(APIView):
+
+    permission_classes = IsAuthenticated
+
+    def get(request, recording_id):
+        try:
+            recording = Recordings.objects.get(id=recording_id)
+            storage_client = storage.Client.from_service_account_json(GCP_CREDENTIALS)
+            bucket = storage_client.bucket(GCP_BUCKET_NAME)
+            # Check if signed URL is expired
+            if not recording.expiration_time or now() > recording.expiration_time:
+                blob = bucket.blob(recording.filePath)
+
+                # new_signed_url, new_expiration = generateSignedUrl(GCP_BUCKET_NAME, recording.filePath)
+                expiration=604800
+                new_expiration = make_aware(datetime.datetime.utcnow() + datetime.timedelta(seconds=expiration))
+                new_signed_url = blob.generate_signed_url(
+                        expiration=new_expiration,
+                        method="GET"
+                    )
+                if not new_signed_url:
+                    return JsonResponse({"error": "Failed to generate signed URL"}, status=500)
+
+                # Update database with new signed URL and expiration time
+                recording.recording_url = new_signed_url
+                recording.expiration_time = new_expiration
+                recording.save(update_fields=['recording_url', 'expiration_time'])
+
+            return JsonResponse({"recording_url": recording.recording_url})
+
+        except Recordings.DoesNotExist:
+            return JsonResponse({"error": "Recording not found"}, status=404)
+        except Exception as e:
+            logger.error(f"Unexpected error: {str(e)}")
+            return JsonResponse({"error": "Something went wrong"}, status=500)
+
+
+
 
 
 
@@ -655,6 +718,9 @@ class RecordingsView(APIView):
         
         except Recordings.DoesNotExist:
             return Response({"status": False, "message": "Recording not found."}, status=status.HTTP_404_NOT_FOUND)
+
+
+
 
 
 # from django.http import JsonResponse
