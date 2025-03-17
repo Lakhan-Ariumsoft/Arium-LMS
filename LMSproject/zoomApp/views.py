@@ -568,7 +568,7 @@ class RecordingsView(APIView):
                     "message": "Invalid date range format. Use 'YYYY-MM-DD:YYYY-MM-DD'."
                 }, status=status.HTTP_400_BAD_REQUEST)
 
-        queryset = queryset.order_by('id') 
+        queryset = queryset.order_by('-created_at') 
         paginator = Paginator(queryset, limit)
         paged_data = paginator.get_page(page)
 

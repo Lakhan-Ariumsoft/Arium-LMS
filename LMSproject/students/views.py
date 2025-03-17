@@ -227,7 +227,7 @@ class StudentsListCreateAPIView(APIView):
             if search_status:
                 query &= Q(enrollment__status__icontains=search_status)
 
-            students_queryset = Students.objects.filter(query).distinct().order_by('id')
+            students_queryset = Students.objects.filter(query).distinct().order_by('-id')
 
             # No records in the database
             if not Students.objects.exists():
