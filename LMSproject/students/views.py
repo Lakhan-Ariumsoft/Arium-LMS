@@ -641,107 +641,230 @@ from rest_framework.response import Response
 from rest_framework import status
 from django.shortcuts import get_object_or_404
 from django.db.models import Q
+from django.core.exceptions import ObjectDoesNotExist
 
 class DashboardAPIView(APIView):
     permission_classes = [IsAuthenticated]  # Ensure only authenticated users can access
 
+    
     def get(self, request):
-        # Get the logged-in user
-        user = request.user
+        try:
+            user = request.user
+            
+            if not user.is_authenticated:
+                return Response({"status": False, "message": "Unauthorized access."}, status=status.HTTP_401_UNAUTHORIZED)
 
-        # Fetch the student instance
-        student = get_object_or_404(Students, email=user.email)  # Assuming email is the identifier
+            # Check if a phone number is provided in query parameters
+            phone_number = request.query_params.get("phone", "").strip()
+            country_code = request.query_params.get("countryCode", "").strip()
 
-        # Fetch courses where the student is enrolled
-        enrolled_courses = Courses.objects.filter(enrollment__student=student).distinct()
+            if phone_number:
+                if user.role.name.lower() != "moderator":  # Ensure only moderators can view other students
+                    return Response({"status": False, "message": "Permission denied."}, status=status.HTTP_403_FORBIDDEN)
 
-        # Get search parameters
-        search_text = request.query_params.get('searchText', None)
-        search_course_id = request.query_params.get('searchCourse', None)
-        date_range = request.query_params.get('dateRange', None)
+                # Ensure both phone number and country code are provided
+                if not country_code:
+                    return Response({"status": False, "message": "countryCode is required when phone is provided."}, status=status.HTTP_400_BAD_REQUEST)
 
-        enrolled_courses_data = []
-        unique_meetings = set()
+                # Fetch student based on phone number and country code
+                student = Students.objects.filter(phone=phone_number, countryCode=country_code).first()
+                
+                if not student:
+                    return Response({"status": False, "message": "Student with given phone number and country code not found."}, status=status.HTTP_404_NOT_FOUND)
+
+            else:
+                # Default case: Fetch student for the logged-in user
+                student = get_object_or_404(Students, email=user.email)
+
+            # Get enrollments (ensuring they exist)
+            enrollments = Enrollment.objects.filter(student=student)
+            if not enrollments.exists():
+                return Response({"status": False, "message": "No enrollments found."}, status=status.HTTP_404_NOT_FOUND)
+
+            # Extract query params
+            search_text = request.query_params.get("searchText", "").strip()
+            search_course_id = request.query_params.get("searchCourse", "").strip()
+            date_range = request.query_params.get("dateRange", "").strip()
+
+            enrolled_courses_data = []
+            unique_meetings = set()
+
+            for enrollment in enrollments:
+                course = enrollment.courses
+                expiry_date = enrollment.expiryDate  # Fetch expiry date if available
+
+                # Fetch Zoom recordings for this course
+                zoom_meetings = Recordings.objects.filter(course=course)
+
+                # Apply search text filter
+                if search_text:
+                    zoom_meetings = zoom_meetings.filter(title__icontains=search_text)
+
+                # Apply course filter (handle invalid IDs)
+                if search_course_id:
+                    try:
+                        course_id = int(search_course_id)
+                        zoom_meetings = zoom_meetings.filter(course__id=course_id)
+                    except ValueError:
+                        return Response({
+                            "status": False,
+                            "message": "Invalid course ID format. Must be an integer.",
+                            "data": [], "total": 0, "limit": 10, "page": 1, "pages": 1
+                        }, status=status.HTTP_400_BAD_REQUEST)
+
+                # Apply date range filter (handle incorrect format)
+                if date_range:
+                    try:
+                        start_date, end_date = date_range.split(",")
+                        start_date = datetime.strptime(start_date.strip(), "%Y-%m-%d").date()
+                        end_date = datetime.strptime(end_date.strip(), "%Y-%m-%d").date()
+                        zoom_meetings = zoom_meetings.filter(updated_at__date__range=(start_date, end_date))
+                    except ValueError:
+                        return Response({
+                            "status": False,
+                            "message": "Invalid date range format. Expected: YYYY-MM-DD,YYYY-MM-DD",
+                            "data": [], "total": 0, "limit": 10, "page": 1, "pages": 1
+                        }, status=status.HTTP_400_BAD_REQUEST)
+
+                # Apply expiry date filter (don't show recordings after expiry)
+                if expiry_date:
+                    zoom_meetings = zoom_meetings.filter(created_at__date__lte=expiry_date)
+
+                # Collect unique meeting data
+                for meeting in zoom_meetings:
+                    unique_key = (
+                        meeting.title.strip().lower(),
+                        meeting.duration,
+                        meeting.updated_at.strftime("%Y-%m-%d %H:%M:%S"),
+                    )
+
+                    if unique_key not in unique_meetings:
+                        unique_meetings.add(unique_key)
+                        enrolled_courses_data.append({
+                            "courseId": course.id,
+                            "courseName": course.courseName,
+                            "title": meeting.title,
+                            "recordingUrl": meeting.recording_url,
+                            "duration": meeting.duration,
+                            "updatedAt": unique_key[2]
+                        })
+
+            # Return final response
+            return Response({
+                "status": True,
+                "message": "Fetched successfully.",
+                "data": enrolled_courses_data,
+                "total": len(enrolled_courses_data),
+                "limit": 10,
+                "page": 1,
+                "pages": 1
+            }, status=status.HTTP_200_OK)
+
+        except ObjectDoesNotExist:
+            return Response({"status": False, "message": "Requested data not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        except Exception as e:
+            return Response({
+                "status": False,
+                "message": f"An unexpected error occurred: {str(e)}"
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    # def get(self, request):
+    #     # Get the logged-in user
+    #     user = request.user
+
+    #     # Fetch the student instance
+    #     student = get_object_or_404(Students, email=user.email)  # Assuming email is the identifier
+
+    #     # Fetch courses where the student is enrolled
+    #     enrolled_courses = Courses.objects.filter(enrollment__student=student).distinct()
+
+    #     # Get search parameters
+    #     search_text = request.query_params.get('searchText', None)
+    #     search_course_id = request.query_params.get('searchCourse', None)
+    #     date_range = request.query_params.get('dateRange', None)
+
+    #     enrolled_courses_data = []
+    #     unique_meetings = set()
         
-        for course in enrolled_courses:
-            # Fetch Zoom recordings for the course
-            zoom_meetings = Recordings.objects.filter(course=course)
+    #     for course in enrolled_courses:
+    #         # Fetch Zoom recordings for the course
+    #         zoom_meetings = Recordings.objects.filter(course=course)
 
-            # Apply filters
-            if search_text:
-                zoom_meetings = zoom_meetings.filter(title__icontains=search_text)
+    #         # Apply filters
+    #         if search_text:
+    #             zoom_meetings = zoom_meetings.filter(title__icontains=search_text)
 
-            if search_course_id:
-                try:
-                    course_id = int(search_course_id)
-                    zoom_meetings = zoom_meetings.filter(course__id=course_id)
-                except ValueError:
-                    return Response({
-                        "status": False,
-                        "message": "Invalid course ID. It should be a valid integer.",
-                        "data": [],
-                        "total": 0,
-                        "limit": 10,
-                        "page": 1,
-                        "pages": 1
-                    }, status=status.HTTP_400_BAD_REQUEST)
+    #         if search_course_id:
+    #             try:
+    #                 course_id = int(search_course_id)
+    #                 zoom_meetings = zoom_meetings.filter(course__id=course_id)
+    #             except ValueError:
+    #                 return Response({
+    #                     "status": False,
+    #                     "message": "Invalid course ID. It should be a valid integer.",
+    #                     "data": [],
+    #                     "total": 0,
+    #                     "limit": 10,
+    #                     "page": 1,
+    #                     "pages": 1
+    #                 }, status=status.HTTP_400_BAD_REQUEST)
 
-            if date_range:
-                try:
-                    start_date, end_date = date_range.split(',')
-                    start_date = datetime.strptime(start_date.strip(), "%Y-%m-%d")
-                    end_date = datetime.strptime(end_date.strip(), "%Y-%m-%d")
-                    zoom_meetings = zoom_meetings.filter(updated_at__date__range=(start_date, end_date))
-                except ValueError:
-                    return Response({
-                        "status": False,
-                        "message": "Invalid date range format. Expected format: YYYY-MM-DD,YYYY-MM-DD",
-                        "data": [],
-                        "total": 0,
-                        "limit": 10,
-                        "page": 1,
-                        "pages": 1
-                    }, status=status.HTTP_400_BAD_REQUEST)
+    #         if date_range:
+    #             try:
+    #                 start_date, end_date = date_range.split(',')
+    #                 start_date = datetime.strptime(start_date.strip(), "%Y-%m-%d")
+    #                 end_date = datetime.strptime(end_date.strip(), "%Y-%m-%d")
+    #                 zoom_meetings = zoom_meetings.filter(updated_at__date__range=(start_date, end_date))
+    #             except ValueError:
+    #                 return Response({
+    #                     "status": False,
+    #                     "message": "Invalid date range format. Expected format: YYYY-MM-DD,YYYY-MM-DD",
+    #                     "data": [],
+    #                     "total": 0,
+    #                     "limit": 10,
+    #                     "page": 1,
+    #                     "pages": 1
+    #                 }, status=status.HTTP_400_BAD_REQUEST)
 
-            # Collect course and meeting data
-            # for meeting in zoom_meetings:
-            #     enrolled_courses_data.append({
-            #         "courseId": course.id,
-            #         "courseName": course.courseName,
-            #         "title": meeting.title,
-            #         "recordingUrl": meeting.recording_url,
-            #         "duration": meeting.duration,
-            #         "updatedAt": meeting.updated_at.strftime("%Y-%m-%d %H:%M:%S")
-            #     })
+    #         # Collect course and meeting data
+    #         # for meeting in zoom_meetings:
+    #         #     enrolled_courses_data.append({
+    #         #         "courseId": course.id,
+    #         #         "courseName": course.courseName,
+    #         #         "title": meeting.title,
+    #         #         "recordingUrl": meeting.recording_url,
+    #         #         "duration": meeting.duration,
+    #         #         "updatedAt": meeting.updated_at.strftime("%Y-%m-%d %H:%M:%S")
+    #         #     })
 
-            # enrolled_courses_data = []
+    #         # enrolled_courses_data = []
 
-            for meeting in zoom_meetings:
-                unique_key = (meeting.title.strip().lower(), meeting.duration, meeting.updated_at.strftime("%Y-%m-%d %H:%M:%S"))
+    #         for meeting in zoom_meetings:
+    #             unique_key = (meeting.title.strip().lower(), meeting.duration, meeting.updated_at.strftime("%Y-%m-%d %H:%M:%S"))
 
-                if unique_key not in unique_meetings:
-                    unique_meetings.add(unique_key)  # Store the unique key to prevent duplicates
-                    enrolled_courses_data.append({
-                        "courseId": course.id,
-                        "courseName": course.courseName,
-                        "title": meeting.title,
-                        "recordingUrl": meeting.recording_url,
-                        "duration": meeting.duration,
-                        "updatedAt": unique_key[2]
-                    })
+    #             if unique_key not in unique_meetings:
+    #                 unique_meetings.add(unique_key)  # Store the unique key to prevent duplicates
+    #                 enrolled_courses_data.append({
+    #                     "courseId": course.id,
+    #                     "courseName": course.courseName,
+    #                     "title": meeting.title,
+    #                     "recordingUrl": meeting.recording_url,
+    #                     "duration": meeting.duration,
+    #                     "updatedAt": unique_key[2]
+    #                 })
 
-        # Response data
-        response_data = {
-            "status": True,
-            "message": "Fetched successfully.",
-            "data": enrolled_courses_data,
-            "total": len(enrolled_courses_data),
-            "limit": 10,
-            "page": 1,
-            "pages": 1
-        }
+    #     # Response data
+    #     response_data = {
+    #         "status": True,
+    #         "message": "Fetched successfully.",
+    #         "data": enrolled_courses_data,
+    #         "total": len(enrolled_courses_data),
+    #         "limit": 10,
+    #         "page": 1,
+    #         "pages": 1
+    #     }
 
-        return Response(response_data, status=status.HTTP_200_OK)
+    #     return Response(response_data, status=status.HTTP_200_OK)
 
     # def get(self, request):
     #     # Get the logged-in user
