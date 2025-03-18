@@ -693,8 +693,8 @@ class DashboardAPIView(APIView):
                 course = enrollment.courses
                 expiry_date = enrollment.expiryDate  # Fetch expiry date if available
 
-                # Fetch Zoom recordings for this course
-                zoom_meetings = Recordings.objects.filter(course=course)
+                # Fetch Zoom recordings for this course before expiry date
+                zoom_meetings = Recordings.objects.filter(course=course, created_at__date__lte=expiry_date)
 
                 # Apply search text filter
                 if search_text:
@@ -725,10 +725,6 @@ class DashboardAPIView(APIView):
                             "message": "Invalid date range format. Expected: YYYY-MM-DD,YYYY-MM-DD",
                             "data": [], "total": 0, "limit": 10, "page": 1, "pages": 1
                         }, status=status.HTTP_400_BAD_REQUEST)
-
-                # Apply expiry date filter (don't show recordings after expiry)
-                if expiry_date:
-                    zoom_meetings = zoom_meetings.filter(created_at__date__lte=expiry_date)
 
                 # Collect unique meeting data
                 for meeting in zoom_meetings:
@@ -763,11 +759,16 @@ class DashboardAPIView(APIView):
         except ObjectDoesNotExist:
             return Response({"status": False, "message": "Requested data not found."}, status=status.HTTP_404_NOT_FOUND)
 
+        except ValueError as ve:
+            return Response({"status": False, "message": f"Invalid input: {str(ve)}"}, status=status.HTTP_400_BAD_REQUEST)
+
         except Exception as e:
             return Response({
                 "status": False,
                 "message": f"An unexpected error occurred: {str(e)}"
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
     # def get(self, request):
     #     # Get the logged-in user
     #     user = request.user
