@@ -27,7 +27,7 @@ DEBUG = True
 
 # ALLOWED_HOSTS = ['*','127.0.0.1', 'localhost', 'f997-103-160-167-162.ngrok-free.app' , 'ariumzoomlms.el.r.appspot.com']
 
-ALLOWED_HOSTS = ['*' , 'backend.sreenidhimusicacademy.com']
+ALLOWED_HOSTS = [ 'backend.sreenidhimusicacademy.com' ]
 
 # Application definition
 
@@ -92,7 +92,14 @@ CSRF_TRUSTED_ORIGINS = [
     'http://localhost:4000',
     "http://35.207.238.34",
     "http://lms.sreenidhimusicacademy.com",
+    "https://lms.sreenidhimusicacademy.com" ,
+    "https://zoom.us'"
+    "https://backend.sreenidhimusicacademy.com"
+    "http://localhost:5173",
+    "http://35.207.238.34",
+    "http://lms.sreenidhimusicacademy.com" ,# Backend IP
     "https://lms.sreenidhimusicacademy.com" 
+
 
 
 
@@ -100,13 +107,6 @@ CSRF_TRUSTED_ORIGINS = [
 ]
 
 
-CORS_ALLOWED_ORIGINS = [
-    "http://localhost:5173",
-    "http://35.207.238.34",
-    "http://lms.sreenidhimusicacademy.com" ,# Backend IP
-    "https://lms.sreenidhimusicacademy.com" 
-
-]
 
 
 
