@@ -27,7 +27,7 @@ DEBUG = True
 
 # ALLOWED_HOSTS = ['*','127.0.0.1', 'localhost', 'f997-103-160-167-162.ngrok-free.app' , 'ariumzoomlms.el.r.appspot.com']
 
-ALLOWED_HOSTS = [ 'backend.sreenidhimusicacademy.com' ]
+ALLOWED_HOSTS = [ 'backend.sreenidhimusicacademy.com' , 'api.sreenidhimusicacademy.com']
 
 # Application definition
 
