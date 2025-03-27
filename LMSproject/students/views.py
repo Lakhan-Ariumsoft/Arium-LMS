@@ -406,6 +406,11 @@ class StudentsDetailAPIView(APIView):
 
     def get(self, request, pk=None):
         try:
+            import os
+            clienttt = os.getenv("ZOOM_CLIENT_ID")
+            print(clienttt,"clientID")
+
+            print("ppppppppppppppp0.",os.environ)
             student = get_object_or_404(Students, pk=pk)
             enrollments = Enrollment.objects.filter(student=student)
             student_data = StudentsSerializer(student).data
