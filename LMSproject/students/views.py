@@ -26,6 +26,8 @@ from users.models import User
 # from django.http import JsonResponse
 from django.db import DatabaseError
 from rest_framework.exceptions import ValidationError
+from django.utils.timezone import now 
+
 
 
 def get_paginated_students(request, students_queryset, search_course):
@@ -271,7 +273,7 @@ class StudentsDetailAPIView(APIView):
         except Students.DoesNotExist:
             return Response({"error": "Student not found."}, status=status.HTTP_404_NOT_FOUND)
     
-
+    
     def patch(self, request, pk=None):
         try:
             # Start a transaction to ensure data consistency
@@ -287,6 +289,7 @@ class StudentsDetailAPIView(APIView):
 
                     # Handle enrollment updates if provided
                     if 'enrollments' in request.data:
+                        updated_enrollments = []
                         for enrollment_data in request.data['enrollments']:
                             course_id = enrollment_data.get("courses")
 
@@ -299,42 +302,78 @@ class StudentsDetailAPIView(APIView):
                                 # Update existing enrollment
                                 enrollment_data['student'] = updated_student.id  # Ensure correct student ID
                                 enrollment_serializer = EnrollmentSerializer(enrollment, data=enrollment_data, partial=True)
-                                
+
                                 if enrollment_serializer.is_valid():
-                                    # Update the enrollment fields explicitly
-                                    enrollment.enrollmentDate = enrollment_serializer.validated_data.get(
-                                        'enrollmentDate', enrollment.enrollmentDate
-                                    )
-                                    enrollment.expiryDate = enrollment_serializer.validated_data.get(
-                                        'expiryDate', enrollment.expiryDate
-                                    )
-                                    enrollment.status = enrollment_serializer.validated_data.get(
-                                        'status', enrollment.status
-                                    )
+                                    # Update the enrollment fields explicitly from the validated data
+                                    enrollment.enrollmentDate = enrollment_serializer.validated_data.get('enrollmentDate', enrollment.enrollmentDate)
+                                    enrollment.expiryDate = enrollment_serializer.validated_data.get('expiryDate', enrollment.expiryDate)
+
+                                    # Set the status based on expiryDate
+                                    if enrollment.expiryDate:
+                                        if enrollment.expiryDate < now().date():
+                                            enrollment.status = 'expired'  # Set to 'expired' if the expiryDate is in the past
+                                        else:
+                                            enrollment.status = 'active'  # Set to 'active' if expiryDate is in the future
+                                    else:
+                                        enrollment.status = 'active'  # If expiryDate is None, keep status as 'active'
+
+                                    # Apply any updates to status (if status is provided in the request, override the current one)
+                                    enrollment.status = enrollment_serializer.validated_data.get('status', enrollment.status)
+
+                                    # Save the enrollment after making updates
                                     enrollment.save()
+
+                                    updated_enrollments.append(EnrollmentSerializer(enrollment).data)
                                 else:
                                     return Response({
                                         "error": "Enrollment update failed.",
                                         "details": enrollment_serializer.errors
                                     }, status=status.HTTP_400_BAD_REQUEST)
-                            
+
                             else:
                                 # Create new enrollment only if no existing enrollment for this student-course
                                 enrollment_data['student'] = updated_student.id
                                 new_enrollment_serializer = EnrollmentSerializer(data=enrollment_data)
-                                
+
                                 if new_enrollment_serializer.is_valid():
-                                    new_enrollment_serializer.save()
+                                    # Check status for new enrollment based on expiryDate
+                                    expiry_date = new_enrollment_serializer.validated_data.get('expiryDate', None)
+                                    if expiry_date:
+                                        if expiry_date < now().date():
+                                            enrollment_data['status'] = 'expired'  # If expiryDate is in the past, set status to 'expired'
+                                        else:
+                                            enrollment_data['status'] = 'active'  # If expiryDate is in the future, set status to 'active'
+                                    else:
+                                        enrollment_data['status'] = 'active'  # If expiryDate is None, keep status as 'active'
+
+                                    new_enrollment = new_enrollment_serializer.save()
+
+                                    updated_enrollments.append(EnrollmentSerializer(new_enrollment).data)
+
                                 else:
                                     return Response({
                                         "error": "Enrollment creation failed.",
                                         "details": new_enrollment_serializer.errors
                                     }, status=status.HTTP_400_BAD_REQUEST)
 
-                    return Response({
-                        "message": "Student and enrollments successfully updated.",
-                        "data": student_serializer.data
-                    }, status=status.HTTP_200_OK)
+                        # Return the response with the updated student and enrollments
+                        return Response({
+                            "message": "Student and enrollment(s) updated successfully",
+                            "status": "success",
+                            "data": {
+                                "student": StudentsSerializer(updated_student).data,
+                                "enrollments": updated_enrollments
+                            }
+                        }, status=status.HTTP_200_OK)
+
+                    else:
+                        # If no enrollments were provided, just return the updated student data
+                        return Response({
+                            "message": "Student updated successfully",
+                            "status": "success",
+                            "data": StudentsSerializer(updated_student).data
+                        }, status=status.HTTP_200_OK)
+
                 else:
                     return Response({
                         "error": "Student update failed.",
@@ -352,8 +391,6 @@ class StudentsDetailAPIView(APIView):
         
         except Exception as e:
             return Response({"error": f"An unexpected error occurred: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-
 
     def delete(self, request, pk=None):
         try:
