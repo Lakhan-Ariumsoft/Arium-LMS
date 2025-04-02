@@ -288,51 +288,54 @@ class StudentsDetailAPIView(APIView):
                     # Handle enrollment updates if provided
                     if 'enrollments' in request.data:
                         for enrollment_data in request.data['enrollments']:
-                            # Check if the student is already enrolled in the same course
-                            existing_enrollment = Enrollment.objects.filter(
-                                student=updated_student, 
-                                courses=enrollment_data.get('courses')
-                            ).first()
+                            course_id = enrollment_data.get("courses")
 
-                            # Skip adding the same enrollment if already enrolled in the course
-                            if existing_enrollment:
-                                continue  # Skip the current enrollment data
-
-                            # If enrollment ID is provided, attempt to update it
+                            # Check if enrollment exists for this student-course pair
                             enrollment = Enrollment.objects.filter(
-                                student=updated_student, id=enrollment_data.get('id')
+                                student=updated_student, courses=course_id
                             ).first()
 
                             if enrollment:
-                                # If enrollment exists, update it
+                                # Update existing enrollment
+                                enrollment_data['student'] = updated_student.id  # Ensure correct student ID
                                 enrollment_serializer = EnrollmentSerializer(enrollment, data=enrollment_data, partial=True)
+                                
                                 if enrollment_serializer.is_valid():
-                                    enrollment_serializer.save()
+                                    # Update the enrollment fields explicitly
+                                    enrollment.enrollmentDate = enrollment_serializer.validated_data.get(
+                                        'enrollmentDate', enrollment.enrollmentDate
+                                    )
+                                    enrollment.expiryDate = enrollment_serializer.validated_data.get(
+                                        'expiryDate', enrollment.expiryDate
+                                    )
+                                    enrollment.status = enrollment_serializer.validated_data.get(
+                                        'status', enrollment.status
+                                    )
+                                    enrollment.save()
                                 else:
-                                    # If update fails, return error and rollback transaction
                                     return Response({
                                         "error": "Enrollment update failed.",
                                         "details": enrollment_serializer.errors
                                     }, status=status.HTTP_400_BAD_REQUEST)
+                            
                             else:
-                                # If no enrollment exists, create new enrollment
+                                # Create new enrollment only if no existing enrollment for this student-course
                                 enrollment_data['student'] = updated_student.id
                                 new_enrollment_serializer = EnrollmentSerializer(data=enrollment_data)
+                                
                                 if new_enrollment_serializer.is_valid():
                                     new_enrollment_serializer.save()
                                 else:
-                                    # If creation fails, return error and rollback transaction
                                     return Response({
                                         "error": "Enrollment creation failed.",
                                         "details": new_enrollment_serializer.errors
                                     }, status=status.HTTP_400_BAD_REQUEST)
 
                     return Response({
-                        "message": "Student successfully updated.",
+                        "message": "Student and enrollments successfully updated.",
                         "data": student_serializer.data
                     }, status=status.HTTP_200_OK)
                 else:
-                    # If student update fails, return error and rollback transaction
                     return Response({
                         "error": "Student update failed.",
                         "details": student_serializer.errors
@@ -349,6 +352,8 @@ class StudentsDetailAPIView(APIView):
         
         except Exception as e:
             return Response({"error": f"An unexpected error occurred: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
 
     def delete(self, request, pk=None):
         try:

@@ -8,12 +8,14 @@ class CoursesSerializer(serializers.ModelSerializer):
         fields = [ 'courses', 'instructorName' ,'studentCount','videosCount']
 
 class EnrollmentSerializer(serializers.ModelSerializer):
-    # Course = CoursesSerializer()
 
     class Meta:
         model = Enrollment
         fields = ['student', 'courses', 'enrollmentDate', 'expiryDate' , 'status']
-
+        extra_kwargs = {
+            'enrollmentDate': {'required': False, 'allow_null': True},
+            'expiryDate': {'required': False, 'allow_null': True},
+        }
 class StudentsSerializer(serializers.ModelSerializer):
     class Meta:
         model = Students
