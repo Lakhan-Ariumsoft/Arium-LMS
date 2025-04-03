@@ -273,7 +273,7 @@ class StudentsDetailAPIView(APIView):
         except Students.DoesNotExist:
             return Response({"error": "Student not found."}, status=status.HTTP_404_NOT_FOUND)
     
-    
+
     def patch(self, request, pk=None):
         try:
             # Start a transaction to ensure data consistency
@@ -462,17 +462,24 @@ class DashboardAPIView(APIView):
             if not user.is_authenticated:
                 return Response({"status": False, "message": "Unauthorized access."}, status=status.HTTP_401_UNAUTHORIZED)
 
-            # Check if a phone number is provided in query parameters
-            phone_number = request.query_params.get("phone", "").strip()
-            country_code = request.query_params.get("countryCode", "").strip()
 
-            if phone_number:
-                if user.role.name.lower() != "moderator":  # Ensure only moderators can view other students
-                    return Response({"status": False, "message": "Permission denied."}, status=status.HTTP_403_FORBIDDEN)
+            # Check if a phone number is provided in query parameters   
+            # phone_number = request.query_params.get("phone", "").strip()
+            # country_code = request.query_params.get("countryCode", "").strip()
 
+            if user.role.name.lower() == "moderator":
+
+                    # Check if a phone number is provided in query parameters
+                phone_number = request.query_params.get("phone", "")
+                country_code = request.query_params.get("countryCode", "")
+
+                if phone_number and country_code:
+                # Ensure phone_number and country_code are not None before stripping
+                    phone_number = phone_number.strip() 
+                    country_code = country_code.strip()
                 # Ensure both phone number and country code are provided
-                if not country_code:
-                    return Response({"status": False, "message": "countryCode is required when phone is provided."}, status=status.HTTP_400_BAD_REQUEST)
+                else:
+                    return Response({"status": False, "message": "phoneNumber and countryCode is required."}, status=status.HTTP_400_BAD_REQUEST)
 
                 # Fetch student based on phone number and country code
                 student = Students.objects.filter(phone=phone_number, countryCode=country_code).first()
@@ -490,10 +497,11 @@ class DashboardAPIView(APIView):
                 return Response({"status": False, "message": "No enrollments found."}, status=status.HTTP_404_NOT_FOUND)
 
             # Extract query params
-            search_text = request.query_params.get("searchText", "").strip()
-            search_course_id = request.query_params.get("searchCourse", "").strip()
-            date_range = request.query_params.get("dateRange", "").strip()
+            search_text = request.query_params.get("searchText", "")
+            search_course_id = request.query_params.get("searchCourse", "")
+            date_range = request.query_params.get("dateRange", "")
 
+            
             enrolled_courses_data = []
             unique_meetings = set()
 
@@ -501,8 +509,18 @@ class DashboardAPIView(APIView):
                 course = enrollment.courses
                 expiry_date = enrollment.expiryDate  # Fetch expiry date if available
 
+            # for enrollment in enrollments:
+            #     course = enrollment.courses
+            #     expiry_date = enrollment.expiryDate  # Fetch expiry date if available
+
                 # Fetch Zoom recordings for this course before expiry date
-                zoom_meetings = Recordings.objects.filter(course=course, created_at__date__lte=expiry_date)
+                # Only apply expiry date filter if expiry_date is not None
+                # if expiry_date:
+                #     zoom_meetings = Recordings.objects.filter(course=course, created_at__date__lte=expiry_date)
+                # else:
+                zoom_meetings = Recordings.objects.filter(course=course)  # Avoid passing None
+
+                # zoom_meetings = Recordings.objects.filter(course=course, created_at__date__lte=expiry_date)
 
                 # Apply search text filter
                 if search_text:
