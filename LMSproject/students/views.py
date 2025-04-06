@@ -508,7 +508,7 @@ class DashboardAPIView(APIView):
             for enrollment in enrollments:
                 course = enrollment.courses
                 expiry_date = enrollment.expiryDate  # Fetch expiry date if available
-
+                enrollment_date = enrollment.enrollmentDate
             # for enrollment in enrollments:
             #     course = enrollment.courses
             #     expiry_date = enrollment.expiryDate  # Fetch expiry date if available
@@ -519,6 +519,17 @@ class DashboardAPIView(APIView):
                 #     zoom_meetings = Recordings.objects.filter(course=course, created_at__date__lte=expiry_date)
                 # else:
                 zoom_meetings = Recordings.objects.filter(course=course)  # Avoid passing None
+
+                # if expiry_date:
+                #     zoom_meetings = Recordings.objects.filter(
+                #         course=course,
+                #         created_on__range=(enrollment_date, expiry_date)
+                #     )
+                # else:
+                #     zoom_meetings = Recordings.objects.filter(
+                #         course=course,
+                #         created_on__gte=enrollment_date
+                #     )
 
                 # zoom_meetings = Recordings.objects.filter(course=course, created_at__date__lte=expiry_date)
 
@@ -563,6 +574,7 @@ class DashboardAPIView(APIView):
                     if unique_key not in unique_meetings:
                         unique_meetings.add(unique_key)
                         enrolled_courses_data.append({
+                            "id":meeting.id,
                             "courseId": course.id,
                             "courseName": course.courseName,
                             "title": meeting.title,
