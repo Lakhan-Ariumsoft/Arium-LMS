@@ -119,12 +119,16 @@ class StudentsListCreateAPIView(APIView):
             search_text = request.query_params.get('searchText', None)
             search_course = request.query_params.get('searchCourse', None)
             search_status = request.query_params.get('searchStatus', None)
+            country_code = request.query_params.get("countryCode", "").strip()
 
             query = Q()
 
             if search_text:
                 query |= Q(firstname__icontains=search_text) | Q(lastname__icontains=search_text)
                 query |= Q(email__icontains=search_text) | Q(phone__icontains=search_text)
+
+            if country_code:
+                query &= Q(countryCode__icontains=country_code)
 
             if search_course:
                 try:
