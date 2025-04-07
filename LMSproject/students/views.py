@@ -116,9 +116,9 @@ class StudentsListCreateAPIView(APIView):
 
     def get(self, request):
         try:
-            search_text = request.query_params.get('searchText', None).strip()
-            search_course = request.query_params.get('searchCourse', None).strip()
-            search_status = request.query_params.get('searchStatus', None).strip()
+            search_text = request.query_params.get('searchText', "").strip()
+            search_course = request.query_params.get('searchCourse', "").strip()
+            search_status = request.query_params.get('searchStatus', "").strip()
             country_code = request.query_params.get("countryCode", "").strip()
 
             query = Q()
