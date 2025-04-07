@@ -128,7 +128,7 @@ class StudentsListCreateAPIView(APIView):
                 query |= Q(email__icontains=search_text) | Q(phone__icontains=search_text)
 
             if country_code:
-                query &= Q(countryCode__icontains=country_code)
+                query &= Q(countryCode=country_code)
 
             if search_course:
                 try:
