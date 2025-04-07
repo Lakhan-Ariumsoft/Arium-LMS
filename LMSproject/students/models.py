@@ -40,7 +40,7 @@ class Enrollment(models.Model):
     ]
     student = models.ForeignKey(Students, on_delete=models.CASCADE)
     courses = models.ForeignKey(Courses, on_delete=models.CASCADE)  # ForeignKey to Courses
-    enrollmentDate = models.DateField(null=True, blank=True)
+    enrollmentDate = models.DateField(auto_now_add=True)
     expiryDate = models.DateField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -50,14 +50,14 @@ class Enrollment(models.Model):
     def __str__(self):
         return f"{self.student} - {self.courses.courseName}"
 
-
-
-# Signal to check and update enrollment status
 @receiver(pre_save, sender=Enrollment)
 def update_enrollment_status(sender, instance, **kwargs):
     """Automatically update status based on expiryDate."""
-    if instance.expiryDate and instance.expiryDate < now().date():
-        instance.status = 'expired'
+    if instance.expiryDate:
+        if instance.expiryDate < now().date():
+            instance.status = 'expired'
+        else:
+            instance.status = 'active'
 
 # @receiver(post_save, sender=Enrollment)
 # def deactivate_student_if_no_active_enrollments(sender, instance, **kwargs):
@@ -137,7 +137,6 @@ def create_or_update_user_for_student(sender, instance, created, **kwargs):
                 )
                 print(f"Created User: {instance.email}")
 
-            print("KKKKKKKKKKK",User.objects.all())
 
     except Role.DoesNotExist:
         # Clean up the student record if the role is missing
