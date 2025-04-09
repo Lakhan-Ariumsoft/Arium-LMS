@@ -387,6 +387,8 @@ def helperFunction(meeting_id):
                         try:
 
                             # Find the course based on the course name
+                            # cleaned_course_name = course_name.strip()
+                            # course = Courses.objects.filter(courseName__iexact=cleaned_course_name).first()
                             course = Courses.objects.filter(courseName__iexact=course_name).first()
                             # Create a new recording entry
                             recording = Recordings.objects.create(
@@ -424,6 +426,7 @@ from django.db.models import F
 from django.db.models import ManyToManyField
 from users.permissions import IsModeratorOrInstructor 
 from rest_framework.permissions import IsAuthenticated
+from datetime import datetime 
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -561,7 +564,7 @@ class RecordingsView(APIView):
                 end_date = datetime.strptime(end_date_str.strip(), "%Y-%m-%d")
                 end_date = end_date.replace(hour=23, minute=59, second=59)
 
-                queryset = queryset.filter(updated_at__range=(start_date, end_date))
+                queryset = queryset.filter(created_at__range=(start_date, end_date))
             except ValueError:
                 return JsonResponse({
                     "status": False,
