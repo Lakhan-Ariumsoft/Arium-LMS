@@ -452,6 +452,7 @@ class GetValidRecordingUrl(APIView):
                 print("Expired::: Generating new signed URL")
 
                 expiration = 604800  # 7 days in seconds
+                import datetime
                 new_expiration = make_aware(datetime.datetime.utcnow() + datetime.timedelta(seconds=expiration))
                 new_signed_url = blob.generate_signed_url(
                     expiration=new_expiration,
