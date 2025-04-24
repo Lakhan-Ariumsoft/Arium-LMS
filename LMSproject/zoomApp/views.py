@@ -248,7 +248,7 @@ def zoom_webhook(request):
                 _ = helperFunction(meeting_id)
 
                 print("DELETE RECORDINGS :::::            ::::")
-                delete_old_recordings()
+                # delete_old_recordings()
 
 
             return JsonResponse({"message": "Webhook received successfully."})
@@ -322,14 +322,6 @@ def helperFunction(meeting_id):
                 except:
                     duration_str = " "
 
-                # Generate filename
-
-                print(f"Video URL: {file_url}")
-                print(f"Formatted Start Time: {start_time}")
-                print(f"Duration: {duration_str} minutes")
-                
-
-
                 # Check if the file already exists and is uploaded
                 blob = bucket.blob(file_path)
                 if blob.exists() and blob.metadata and blob.metadata.get("status") == "uploaded":
@@ -374,12 +366,8 @@ def helperFunction(meeting_id):
                                     expiration=expirationTime,
                                     method="GET"
                                 )
-                            print(":::::      :::::::::           ::::::::393          :", file_path , GCP_BUCKET_NAME)
                             # signed_url , expirationTime = generateSignedUrl(GCP_BUCKET_NAME, file_path)
-                            print(":::::: :::    ::      ::    :",signed_url , expirationTime)
                         except Exception as e:
-                            print()
-                            print("::::::::::::: LLLLL   :L::::::::::: ")
                             print(f"Error generating signed URL: {e}")
                             # signed_url = ""
                             # expirationTime = make_aware(datetime.datetime.utcnow()) 

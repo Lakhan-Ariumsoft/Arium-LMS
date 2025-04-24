@@ -40,7 +40,7 @@ class Enrollment(models.Model):
     ]
     student = models.ForeignKey(Students, on_delete=models.CASCADE)
     courses = models.ForeignKey(Courses, on_delete=models.CASCADE)  # ForeignKey to Courses
-    enrollmentDate = models.DateField(auto_now_add=True)
+    enrollmentDate = models.DateField(null=True, blank=True)
     expiryDate = models.DateField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
