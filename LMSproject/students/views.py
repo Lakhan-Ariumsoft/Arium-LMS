@@ -524,18 +524,18 @@ class DashboardAPIView(APIView):
                 # if expiry_date:
                 #     zoom_meetings = Recordings.objects.filter(course=course, created_at__date__lte=expiry_date)
                 # else:
-                zoom_meetings = Recordings.objects.filter(course=course)  # Avoid passing None
+                # zoom_meetings = Recordings.objects.filter(course=course)  # Avoid passing None
 
-                # if expiry_date:
-                #     zoom_meetings = Recordings.objects.filter(
-                #         course=course,
-                #         created_on__range=(enrollment_date, expiry_date)
-                #     )
-                # else:
-                #     zoom_meetings = Recordings.objects.filter(
-                #         course=course,
-                #         created_on__gte=enrollment_date
-                #     )
+                if expiry_date:
+                    zoom_meetings = Recordings.objects.filter(
+                        course=course,
+                        created_at__range=(enrollment_date, expiry_date)
+                    )
+                else:
+                    zoom_meetings = Recordings.objects.filter(
+                        course=course,
+                        created_at__gte=enrollment_date
+                    )
 
                 # zoom_meetings = Recordings.objects.filter(course=course, created_at__date__lte=expiry_date)
 
