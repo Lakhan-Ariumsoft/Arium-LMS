@@ -24,7 +24,8 @@ from django.db.models import Q
 from datetime import datetime
 from rest_framework import status
 
-from zoomApp.models import Recordings  # Import the ZoomMeeting model
+from zoomApp.models import Recordings 
+# FailedRecording # Import the ZoomMeeting model
 from courses.models import Courses  # Import the Courses model
 from django.db import IntegrityError
 
@@ -258,7 +259,141 @@ def zoom_webhook(request):
 
     return JsonResponse({"error": "Invalid method"}, status=400)
 
+# import os
+# import requests
+# from datetime import datetime, timedelta
+# from django.utils.timezone import make_aware
+# from django.db import IntegrityError
+# from google.cloud import storage
+# from myapp.utils import get_access_token, get_recording_details  # Ensure these utility functions are defined
 
+# def helperFunction(meeting_id):
+#     try:
+#         # Step 1: Get Zoom access token
+#         access_token = get_access_token(ZOOM_CLIENT_ID, ZOOM_CLIENT_SECRET, ZOOM_ACCOUNT_ID)
+#         if not access_token:
+#             raise Exception("Failed to retrieve access token from Zoom")
+
+#         # Step 2: Get meeting recording details
+#         details = get_recording_details(access_token, meeting_id)
+#         if not details:
+#             raise Exception(f"Failed to retrieve recording details for meeting {meeting_id}")
+
+#         recordings = details.get("recording_files", [])
+#         meeting_topic = details.get("topic", "Unknown_Meeting").replace("/", "_").replace(":", "_")
+#         meeting_folder = f"{meeting_topic}_{meeting_id}"  # Folder name: Meeting title + Meeting ID
+
+#         # Extract the course name from the meeting topic
+#         course_name = meeting_topic.split("_")[0]
+
+#         # Step 3: Initialize Google Cloud Storage client
+#         storage_client = storage.Client.from_service_account_json(GCP_CREDENTIALS)
+#         bucket = storage_client.bucket(GCP_BUCKET_NAME)
+
+#         # Check if the folder exists; if not, create it
+#         folder_blob = bucket.blob(f"{meeting_folder}/")
+#         if not folder_blob.exists():
+#             folder_blob.upload_from_string("", content_type="application/x-www-form-urlencoded")
+#             print(f"Folder '{meeting_folder}' created in bucket '{GCP_BUCKET_NAME}'.")
+
+#         # Step 4: Process each recording
+#         for recording in recordings:
+#             if recording.get("file_type") != "MP4":
+#                 continue  # Skip non-MP4 files
+
+#             file_url = recording["download_url"]
+#             recording_id = recording["id"]
+#             start_time = recording.get("recording_start", "unknown_start").replace(":", "_").replace("T", "_")
+#             file_name = f"{meeting_topic}_{recording_id}_{start_time}.mp4"
+#             file_path = f"{meeting_folder}/{file_name}"  # Path in the bucket
+
+#             # Calculate duration
+#             try:
+#                 start_timestamp = recording.get("recording_start")
+#                 end_timestamp = recording.get("recording_end")
+#                 if start_timestamp and end_timestamp:
+#                     start_dt = datetime.fromisoformat(start_timestamp.replace("Z", ""))
+#                     end_dt = datetime.fromisoformat(end_timestamp.replace("Z", ""))
+#                     duration = round((end_dt - start_dt).total_seconds() / 60, 2)
+#                 else:
+#                     duration = None
+#             except Exception as e:
+#                 print(f"Error calculating duration: {e}")
+#                 duration = None
+
+#             # Check if the file already exists and is uploaded
+#             blob = bucket.blob(file_path)
+#             if blob.exists() and blob.metadata and blob.metadata.get("status") == "uploaded":
+#                 print(f"File '{file_name}' already uploaded successfully. Skipping upload.")
+#                 continue
+
+#             # Download the recording file
+#             try:
+#                 headers = {"Authorization": f"Bearer {access_token}"}
+#                 response = requests.get(file_url, headers=headers, stream=True, timeout=60)
+#                 if response.status_code != 200:
+#                     raise Exception(f"Failed to download file from Zoom. Status Code: {response.status_code}")
+
+#                 # Upload to GCP
+#                 blob.metadata = {"status": "uploading", "meeting_id": meeting_id}
+#                 blob.chunk_size = 26214400  # 25MB chunk size
+#                 blob.upload_from_file(response.raw, content_type="video/mp4")
+#                 print(f"Recording '{file_name}' uploaded successfully to GCP.")
+
+#                 # Update metadata to mark upload as complete
+#                 blob.metadata = {"status": "uploaded", "meeting_id": meeting_id}
+#                 blob.patch()
+
+#                 # Generate signed URL
+#                 expiration = timedelta(days=7)
+#                 expiration_time = make_aware(datetime.utcnow() + expiration)
+#                 signed_url = blob.generate_signed_url(expiration=expiration_time, method="GET")
+
+#                 # Save Zoom meeting details to the database
+#                 try:
+#                     course = Courses.objects.filter(courseName__iexact=course_name.strip()).first()
+#                     recording_entry = Recordings.objects.create(
+#                         title=meeting_topic,
+#                         meeting_id=meeting_id,
+#                         duration=duration,
+#                         filePath=file_path,
+#                         recording_url=signed_url,
+#                         expiration_time=expiration_time
+#                     )
+#                     if course:
+#                         recording_entry.course.add(course)
+#                         course.videosCount += 1
+#                         course.save(update_fields=["videosCount"])
+#                     print(f"Recording '{meeting_topic}' added to database.")
+#                 except IntegrityError as e:
+#                     print(f"Integrity error while saving Recording: {e}")
+#                 except Exception as e:
+#                     print(f"Error saving recording to database: {e}")
+#                     # Log the failure for retry
+#                     FailedRecording.objects.create(
+#                         meeting_id=meeting_id,
+#                         file_path=file_path,
+#                         reason=str(e)
+#                     )
+#             except Exception as e:
+#                 print(f"Error uploading file '{file_name}': {e}")
+#                 # Log the failure for retry
+#                 FailedRecording.objects.create(
+#                     meeting_id=meeting_id,
+#                     file_path=file_path,
+#                     reason=str(e)
+#                 )
+#     except Exception as e:
+#         print(f"Critical error in upload_recordings for meeting ID '{meeting_id}': {e}")
+#         # Log the failure for retry
+#         FailedRecording.objects.create(
+#             meeting_id=meeting_id,
+#             file_path="",
+#             reason=str(e)
+#         )
+
+
+#old helper function
 def helperFunction(meeting_id):
     """Process and upload recordings for a given meeting ID."""
     try:
@@ -375,17 +510,20 @@ def helperFunction(meeting_id):
                         try:
 
                             # Find the course based on the course name
-                            # cleaned_course_name = course_name.strip()
+                            courseName = course_name.strip()
                             # course = Courses.objects.filter(courseName__iexact=cleaned_course_name).first()
-                            course = Courses.objects.filter(courseName__iexact=course_name).first()
+                            course = Courses.objects.filter(courseName__iexact=courseName).first()
                             # Create a new recording entry
                             recording = Recordings.objects.create(
                                 title=meeting_topic,
                                 meeting_id=meeting_id,
                                 duration=duration_str,  # Assuming duration is available
                                 filePath=file_path,
-                                recording_url=signed_url,
-                                expiration_time=expirationTime
+                                recording_url = signed_url if signed_url else "",
+                                expiration_time = expirationTime if expirationTime else ""
+
+                                # recording_url=signed_url,
+                                # expiration_time=expirationTime
                             )
 
                             # If a course is found, associate it with the recording
@@ -403,6 +541,120 @@ def helperFunction(meeting_id):
                     print(f"Error uploading file '{file_name}': {e}")
     except Exception as e:
         print(f"Critical error in upload_recordings for meeting ID '{meeting_id}': {e}")
+
+
+from datetime import datetime, timedelta
+from django.utils import timezone
+
+
+class UploadRecordingView(APIView):
+    def post(self, request):
+        course_name = request.data.get('course_name')
+        meeting_id = request.data.get('meeting_id')
+        uploaded_file = request.FILES.get('file')
+        recording_start = request.data.get('recording_start')
+        recording_end = request.data.get('recording_end')
+        duration = request.data.get('duration')
+
+        if not all([course_name, meeting_id, uploaded_file]):
+            return Response(
+                {"error": "course_name, meeting_id and file are required."},
+                status=400
+            )
+
+        try:
+            # Clean folder name
+            safe_course = course_name.replace("/", "_").replace(":", "_")
+            safe_meeting = meeting_id.replace("/", "_").replace(":", "_")
+            file_name = uploaded_file.name
+            folder_name = f"{safe_course}_{safe_meeting}"
+            file_path = f"{folder_name}/{file_name}"
+
+            # Setup GCP
+            client = storage.Client.from_service_account_json(os.getenv("GCP_CREDENTIALS"))
+            bucket = client.bucket(os.getenv("GCP_BUCKET_NAME"))
+            blob = bucket.blob(file_path)
+
+            # Set large chunk size (5MB or more)
+            blob.chunk_size = 5 * 1024 * 1024  # 5MB
+
+            # Upload if it doesn't exist
+            if not blob.exists():
+                uploaded_file.seek(0)  # ensure pointer is at beginning
+                blob.metadata = {"status": "uploading", "meeting_id": meeting_id}
+                blob.upload_from_file(
+                    uploaded_file.file,
+                    rewind=True,
+                    content_type="video/mp4",
+                    # resumable=True
+                )
+                blob.metadata = {"status": "uploaded", "meeting_id": meeting_id}
+                blob.patch()
+
+
+            # Generate signed URL
+            expiration_time = timezone.make_aware(datetime.utcnow() + timedelta(days=7))
+            signed_url = blob.generate_signed_url(
+                expiration=expiration_time,
+                method="GET"
+            )
+
+            # Check if recording already exists in DB
+            existing = Recordings.objects.filter(meeting_id=meeting_id, filePath=file_path).first()
+            if existing:
+                return Response({"message": "Recording already in database."}, status=200)
+
+            # Duration calculation
+            try:
+                if not duration:
+                    # from datetime import datetime
+                    from moviepy.editor import VideoFileClip
+                    import tempfile
+                    # Fallback: calculate from uploaded video
+                    uploaded_file.seek(0)  # Ensure the file pointer is at the beginning
+                    file_ext = os.path.splitext(uploaded_file.name)[1] or ".mp4"  # use actual extension or fallback
+
+                    with tempfile.NamedTemporaryFile(delete=True, suffix=file_ext) as temp_file:
+                        for chunk in uploaded_file.chunks():
+                            temp_file.write(chunk)
+                        temp_file.flush()
+
+                        clip = VideoFileClip(temp_file.name)
+                        duration = round(clip.duration / 60, 2)
+                        clip.close()
+
+            except Exception as e:
+                print("Duration error:", str(e))  # Optional: log for debugging
+                duration = 00
+
+            # Match course
+            course = Courses.objects.filter(courseName__iexact=course_name.strip()).first()
+
+            # Create recording
+            recording = Recordings.objects.create(
+                title=file_name,
+                meeting_id=meeting_id,
+                duration=duration,
+                filePath=file_path,
+                recording_url=signed_url,
+                expiration_time=expiration_time
+            )
+
+            if course:
+                recording.course.add(course)
+                course.videosCount += 1
+                course.save(update_fields=["videosCount"])
+
+            return Response({
+                "message": "Uploaded and saved successfully",
+                "recording_id": recording.id,
+                "duration": duration,
+                "signed_url": signed_url
+            }, status=201)
+
+        except Exception as e:
+            return Response({"error": str(e)}, status=500)
+
 
 
 import logging
@@ -466,10 +718,6 @@ class GetValidRecordingUrl(APIView):
         except Exception as e:
             logger.error(f"Unexpected error: {str(e)}")
             return JsonResponse({"error": "Something went wrong"}, status=500)
-
-
-
-
 
 class RecordingsView(APIView):
 
