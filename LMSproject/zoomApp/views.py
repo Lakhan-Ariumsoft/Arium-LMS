@@ -549,14 +549,14 @@ from django.utils import timezone
 
 class UploadRecordingView(APIView):
     def post(self, request):
-        course_name = request.data.get('course_name')
+        course_id = request.data.get('course_id')
         meeting_id = request.data.get('meeting_id')
         uploaded_file = request.FILES.get('file')
-        recording_start = request.data.get('recording_start')
-        recording_end = request.data.get('recording_end')
+        # recording_start = request.data.get('recording_start')
+        # recording_end = request.data.get('recording_end')
         duration = request.data.get('duration')
 
-        if not all([course_name, meeting_id, uploaded_file]):
+        if not all([course_id, meeting_id, uploaded_file]):
             return Response(
                 {"error": "course_name, meeting_id and file are required."},
                 status=400
@@ -564,7 +564,8 @@ class UploadRecordingView(APIView):
 
         try:
             # Clean folder name
-            safe_course = course_name.replace("/", "_").replace(":", "_")
+            # safe_course = course_name.replace("/", "_").replace(":", "_")
+            safe_course = Courses.objects.get(id=course_id).courseName
             safe_meeting = meeting_id.replace("/", "_").replace(":", "_")
             file_name = uploaded_file.name
             folder_name = f"{safe_course}_{safe_meeting}"
@@ -604,31 +605,9 @@ class UploadRecordingView(APIView):
             if existing:
                 return Response({"message": "Recording already in database."}, status=200)
 
-            # Duration calculation
-            try:
-                if not duration:
-                    # from datetime import datetime
-                    from moviepy.editor import VideoFileClip
-                    import tempfile
-                    # Fallback: calculate from uploaded video
-                    uploaded_file.seek(0)  # Ensure the file pointer is at the beginning
-                    file_ext = os.path.splitext(uploaded_file.name)[1] or ".mp4"  # use actual extension or fallback
-
-                    with tempfile.NamedTemporaryFile(delete=True, suffix=file_ext) as temp_file:
-                        for chunk in uploaded_file.chunks():
-                            temp_file.write(chunk)
-                        temp_file.flush()
-
-                        clip = VideoFileClip(temp_file.name)
-                        duration = round(clip.duration / 60, 2)
-                        clip.close()
-
-            except Exception as e:
-                print("Duration error:", str(e))  # Optional: log for debugging
-                duration = 00
 
             # Match course
-            course = Courses.objects.filter(courseName__iexact=course_name.strip()).first()
+            course = Courses.objects.filter(courseName__iexact=safe_course).first()
 
             # Create recording
             recording = Recordings.objects.create(
