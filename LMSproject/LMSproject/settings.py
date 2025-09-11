@@ -27,7 +27,7 @@ DEBUG = True
 
 # ALLOWED_HOSTS = ['*','127.0.0.1', 'localhost', 'f997-103-160-167-162.ngrok-free.app' , 'ariumzoomlms.el.r.appspot.com']
 
-ALLOWED_HOSTS = [ 'backend.sreenidhimusicacademy.com' , 'api.sreenidhimusicacademy.com']
+ALLOWED_HOSTS = ['backend.sreenidhimusicacademy.com' , 'api.sreenidhimusicacademy.com' , 'f509-2402-e280-3e9d-7b8-e93f-f69e-4070-3ba8.ngrok-free.app']
 
 # Application definition
 
@@ -216,3 +216,7 @@ SIMPLE_JWT = {
 
 CORS_ALLOW_ALL_ORIGINS = True
 CORS_ALLOW_CREDENTIALS = True
+
+# Allow larger uploads, e.g., up to 2 GB
+DATA_UPLOAD_MAX_MEMORY_SIZE = 2 * 1024 * 1024 * 1024  # 2 GB
+FILE_UPLOAD_MAX_MEMORY_SIZE = 2 * 1024 * 1024 * 1024  # 2 GB
