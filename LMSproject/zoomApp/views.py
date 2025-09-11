@@ -549,6 +549,9 @@ from django.utils import timezone
 
 class UploadRecordingView(APIView):
     def post(self, request):
+        print("User:", request.user)
+        if not request.user.is_authenticated:
+            return JsonResponse({"error": "User not authenticated"}, status=401)
         course_id = request.data.get('course_id')
         meeting_id = request.data.get('meeting_id')
         uploaded_file = request.FILES.get('file')
@@ -558,7 +561,7 @@ class UploadRecordingView(APIView):
 
         if not all([course_id, meeting_id, uploaded_file]):
             return Response(
-                {"error": "course_name, meeting_id and file are required."},
+                {"error": "course_id, meeting_id and file are required."},
                 status=400
             )
 
@@ -587,6 +590,7 @@ class UploadRecordingView(APIView):
                     uploaded_file.file,
                     rewind=True,
                     content_type="video/mp4",
+                    timeout=3600
                     # resumable=True
                 )
                 blob.metadata = {"status": "uploaded", "meeting_id": meeting_id}
