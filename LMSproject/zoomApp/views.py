@@ -574,6 +574,10 @@ class UploadRecordingView(APIView):
             folder_name = f"{safe_course}_{safe_meeting}"
             file_path = f"{folder_name}/{file_name}"
 
+            # Check if recording already exists in DB
+            existing = Recordings.objects.filter(meeting_id=meeting_id, filePath=file_path).first()
+            if existing:
+                return Response({"message": "Recording already in database."}, status=200)
             # Setup GCP
             client = storage.Client.from_service_account_json(os.getenv("GCP_CREDENTIALS"))
             bucket = client.bucket(os.getenv("GCP_BUCKET_NAME"))
@@ -604,10 +608,7 @@ class UploadRecordingView(APIView):
                 method="GET"
             )
 
-            # Check if recording already exists in DB
-            existing = Recordings.objects.filter(meeting_id=meeting_id, filePath=file_path).first()
-            if existing:
-                return Response({"message": "Recording already in database."}, status=200)
+            
 
 
             # Match course
